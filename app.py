@@ -5,12 +5,8 @@ import os
 import requests
 import urllib.request
 import unicodedata
-import wikipedia
 import re
 from duckduckgo_search import DDGS
-
-# Nastavení češtiny
-wikipedia.set_lang("cs")
 
 st.set_page_config(page_title="Cedulkovač Šlapanice", layout="wide")
 
@@ -35,52 +31,67 @@ def clean_filename(text):
     only_ascii = nfkd_form.encode('ASCII', 'ignore').decode('utf-8')
     return only_ascii.replace(" ", "_").upper()
 
-# --- FUNKCE PRO DOHLEDÁNÍ VELKÉHO MNOŽSTVÍ INFO ---
-def fetch_lots_of_info(query):
-    all_sentences = []
+# --- CHYTRÉ DOHLEDÁVÁNÍ FAKTŮ ---
+def fetch_smart_plant_data(query):
+    facts = []
     img_url = None
     
     try:
-        # Získáme delší text z Wikipedie
-        page = wikipedia.page(query, auto_suggest=True)
-        content = page.summary + " " + page.section("Popis") if page.section("Popis") else page.summary
-        
-        # Rozsekání na věty (hledáme tečky, ale pozor na zkratky)
-        raw_sentences = re.split(r'(?<=[.!?]) +', content)
-        
-        for s in raw_sentences:
-            s = re.sub(r'\(.*?\)', '', s).strip() # Odstranění textu v závorkách
-            if len(s) > 10 and len(s) < 150: # Bereme jen rozumně dlouhé věty
-                all_sentences.append(s)
-            if len(all_sentences) >= 15: break # Chceme zásobu cca 15 vět
-    except:
-        all_sentences = [
-            "Kvalitní odrůda pro vaši zahradu", "Bohatá úroda zaručena", 
-            "Odolná sazenice z naší farmy", "Pěstováno bez chemických hnojiv",
-            "Tradiční šlapanická kvalita", "Vhodné pro pěstování v nádobách",
-            "Výborná chuť a aroma", "Sazenice s pevným balem"
-        ]
-
-    try:
         with DDGS() as ddgs:
-            res = list(ddgs.images(f"{query} plod detail", max_results=1))
-            if res: img_url = res[0]['image']
-    except: pass
-    
-    return all_sentences, img_url
+            # 1. HLEDÁNÍ TEXTU (hledáme konkrétně "pěstování" a "vlastnosti")
+            search_results = list(ddgs.text(f"{query} vlastnosti pěstování využití", max_results=5))
+            
+            seen_sentences = set()
+            for r in search_results:
+                snippet = r['body']
+                # Rozdělení na věty
+                sentences = re.split(r'(?<=[.!?]) +', snippet)
+                for s in sentences:
+                    s = s.strip().replace("...", "")
+                    # FILTR: Hledáme věcné informace (klíčová slova)
+                    keywords = ["chuť", "aroma", "slunce", "půda", "vitamín", "výnos", "odolná", "plod", "léčiv", "vhodné", "využití"]
+                    if any(key in s.lower() for key in keywords) and len(s) < 80 and len(s) > 15:
+                        # Očištění od balastu
+                        clean_s = re.sub(r'http\S+', '', s)
+                        if clean_s not in seen_sentences:
+                            facts.append(clean_s)
+                            seen_sentences.add(clean_s)
+            
+            # 2. HLEDÁNÍ OBRÁZKU
+            img_results = list(ddgs.images(f"{query} sazenice plod detail", max_results=1))
+            if img_results:
+                img_url = img_results[0]['image']
+    except:
+        pass
 
-# --- STRUKTURA APLIKACE ---
-st.title("🚜 Šlapanický Cedulkovač – Inteligentní výběr")
+    # ZÁCHRANNÁ BRZDA: Pokud internet nic rozumného nenašel, nabídneme profi univerzální body
+    placeholders = [
+        "Vynikající chuť a bohaté aroma",
+        "Silná sazenice s bohatým kořenem",
+        "Vhodné pro záhony i do truhlíků",
+        "Vypěstováno lokálně bez chemie",
+        "Vysoký obsah vitamínů a minerálů",
+        "Odolná odrůda pro české zahrady"
+    ]
+    
+    while len(facts) < 8:
+        facts.append(placeholders[len(facts) % len(placeholders)])
+        
+    return facts, img_url
+
+# --- APLIKACE ---
+st.title("🚜 Šlapanický Cedulkovač – Profi Faktograf")
+st.write("Aplikace dohledá věcné informace o chuti, pěstování a využití rostliny.")
 
 if 'all_options' not in st.session_state: st.session_state.all_options = []
 if 'img_found' not in st.session_state: st.session_state.img_found = None
 
-nazev = st.text_input("Zadejte název sazenice (např. Paprika ranná):")
+nazev = st.text_input("Zadejte název sazenice:", placeholder="Např. Celer řapíkatý")
 
-if st.button("🔍 Prohledat internet a nabídnout možnosti"):
+if st.button("🔍 Najít věcné informace"):
     if nazev:
-        with st.spinner('Pracuji jako včelička...'):
-            options, img = fetch_lots_of_info(nazev)
+        with st.spinner('Analyzuji odborné weby...'):
+            options, img = fetch_smart_plant_data(nazev)
             st.session_state.all_options = options
             if img:
                 try:
@@ -93,29 +104,27 @@ if st.button("🔍 Prohledat internet a nabídnout možnosti"):
 st.markdown("---")
 
 if st.session_state.all_options:
-    st.subheader("📋 1. Vyberte právě 4 informace pro cedulku")
-    # Multiselect s limitem
+    st.subheader("📋 Vyberte 4 nejdůležitější informace pro zákazníka")
+    st.info("Zde jsou fakta o chuti, nárocích a využití. Vyberte ty nejlepší.")
+    
     selected = st.multiselect("Vyberte z nabídky:", st.session_state.all_options, max_selections=4)
     
     if len(selected) == 4:
-        st.success("Skvěle! Teď je můžete v případě potřeby naposledy upravit:")
         col1, col2 = st.columns(2)
-        
         with col1:
-            # Finální editační políčka
-            f1 = st.text_input("Bod 1:", value=selected[0])
-            f2 = st.text_input("Bod 2:", value=selected[1])
-            f3 = st.text_input("Bod 3:", value=selected[2])
-            f4 = st.text_input("Bod 4:", value=selected[3])
+            # Možnost finální editace (zkrácení, úprava)
+            f1 = st.text_input("Bod 1:", value=selected[0][:50])
+            f2 = st.text_input("Bod 2:", value=selected[1][:50])
+            f3 = st.text_input("Bod 3:", value=selected[2][:50])
+            f4 = st.text_input("Bod 4:", value=selected[3][:50])
         
         with col2:
             if st.session_state.img_found:
-                st.image(st.session_state.img_found, width=250, caption="Náhled fotky")
-            uploaded = st.file_uploader("Nahrát jinou fotku?", type=["jpg", "png"])
-            if uploaded: st.session_state.img_found = Image.open(uploaded).convert("RGB")
+                st.image(st.session_state.img_found, width=200)
+            up = st.file_uploader("Nahrát vlastní fotku:", type=["jpg", "png"])
+            if up: st.session_state.img_found = Image.open(up).convert("RGB")
 
-        # --- GENERÁTOR ---
-        if st.button("✨ VYTVOŘIT CEDULKY"):
+        if st.button("✨ VYTVOŘIT PROFI CEDULKY"):
             A4_W, A4_H = 2480, 3508
             LABEL_W, LABEL_H = A4_W // 2, A4_H // 2
             canvas = Image.new('RGB', (A4_W, A4_H), 'white')
@@ -124,65 +133,48 @@ if st.session_state.all_options:
             def create_label(name, img, bullets):
                 lbl = Image.new('RGB', (LABEL_W, LABEL_H), 'white')
                 d = ImageDraw.Draw(lbl)
-                
-                # Logo
                 y = 50
+                # Logo
                 try:
                     logo = Image.open("logo txt farma.JPG").convert("RGBA")
-                    lw = LABEL_W - 280
+                    lw = LABEL_W - 300
                     lh = int(lw * (logo.height / logo.width))
                     logo = logo.resize((lw, lh), Image.Resampling.LANCZOS)
                     lbl.paste(logo, ((LABEL_W - lw) // 2, y), logo)
                     y += lh + 25
                 except: y += 110
-
                 # Název
-                f_t = get_fitting_font(name.upper(), LABEL_W, 125, font_p)
+                f_t = get_fitting_font(name.upper(), LABEL_W, 120, font_p)
                 d.text((LABEL_W//2, y + 45), name.upper(), fill="#1B5E20", anchor="mm", font=f_t)
-                y += 135
-
+                y += 140
                 # Fotka
                 if img:
                     th = int(LABEL_H * 0.40)
                     asp = img.width / img.height
                     tw = int(th * asp)
-                    if tw > LABEL_W - 160:
-                        tw = LABEL_W - 160
-                        th = int(tw / asp)
+                    if tw > LABEL_W - 160: tw = LABEL_W - 160; th = int(tw / asp)
                     res = img.resize((tw, th), Image.Resampling.LANCZOS)
                     lbl.paste(res, ((LABEL_W - tw) // 2, y))
-                    y += th + 45
+                    y += th + 50
                 else: y += 320
-
                 # Body
-                f_b = ImageFont.truetype(font_p, 52)
+                f_b = ImageFont.truetype(font_p, 50)
                 for b in bullets:
-                    if b.strip():
-                        # Ořezání na řádek, aby to nepřečuhovalo
-                        clean_b = b[:55] + "..." if len(b) > 55 else b
-                        d.text((110, y), f"• {clean_b}", fill="#333333", font=f_b)
+                    if b:
+                        d.text((115, y), f"• {b}", fill="#333333", font=f_b)
                         y += 75
-
                 # Cena
-                bx_w, bx_h = 420, 150
-                bx_x, bx_y = (LABEL_W - bx_w)//2, LABEL_H - 220
+                bx_w, bx_h = 420, 155
+                bx_x, bx_y = (LABEL_W - bx_w)//2, LABEL_H - 225
                 d.rectangle([bx_x, bx_y, bx_x + bx_w, bx_y + bx_h], outline="#1B5E20", width=12)
-                d.text((bx_x + bx_w + 35, bx_y + 75), "Kč", fill="black", anchor="lm", font=ImageFont.truetype(font_p, 100))
-                
+                d.text((bx_x + bx_w + 35, bx_y + 80), "Kč", fill="black", anchor="lm", font=ImageFont.truetype(font_p, 100))
                 d.rectangle([0, 0, LABEL_W-2, LABEL_H-2], outline="#EEEEEE", width=4)
                 return lbl
 
-            final_bullets = [f1, f2, f3, f4]
-            label_img = create_label(nazev, st.session_state.img_found, final_bullets)
-            
-            canvas.paste(label_img, (0, 0))
-            canvas.paste(label_img, (LABEL_W, 0))
-            canvas.paste(label_img, (0, LABEL_H))
-            canvas.paste(label_img, (LABEL_W, LABEL_H))
-
+            final_label = create_label(nazev, st.session_state.img_found, [f1, f2, f3, f4])
+            canvas.paste(final_label, (0, 0)); canvas.paste(final_label, (LABEL_W, 0))
+            canvas.paste(final_label, (0, LABEL_H)); canvas.paste(final_label, (LABEL_W, LABEL_H))
             st.image(canvas, use_column_width=True)
             buf = io.BytesIO()
             canvas.save(buf, format="PDF")
-            st.download_button(f"📥 STÁHNOUT PDF ({nazev})", buf.getvalue(), f"cedulky_{clean_filename(nazev)}.pdf", "application/pdf")
-    else:
-        st.info("Vyberte prosím přesně 4 body z nabídky výše.")
+            st.download_button(f"📥 STÁHNOUT PDF {nazev.upper()}", buf.getvalue(), f"cedulky_{clean_filename(nazev)}.pdf", "application/pdf")
