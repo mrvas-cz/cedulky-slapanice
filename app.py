@@ -8,7 +8,7 @@ import unicodedata
 import re
 from duckduckgo_search import DDGS
 
-st.set_page_config(page_title="Cedulkovač Šlapanice", layout="wide")
+st.set_page_config(page_title="PRO Cedulkovač Farma", layout="wide")
 
 @st.cache_resource
 def get_czech_font():
@@ -18,163 +18,173 @@ def get_czech_font():
         urllib.request.urlretrieve(url, font_path)
     return font_path
 
-def get_fitting_font(text, max_width, initial_size, font_path):
-    size = initial_size
-    font = ImageFont.truetype(font_path, size)
-    while font.getlength(text) > (max_width - 140) and size > 35:
-        size -= 4
-        font = ImageFont.truetype(font_path, size)
-    return font
-
 def clean_filename(text):
     nfkd_form = unicodedata.normalize('NFKD', text)
-    only_ascii = nfkd_form.encode('ASCII', 'ignore').decode('utf-8')
-    return only_ascii.replace(" ", "_").upper()
+    return nfkd_form.encode('ASCII', 'ignore').decode('utf-8').replace(" ", "_").upper()
 
-# --- CHYTRÉ DOHLEDÁVÁNÍ FAKTŮ ---
-def fetch_smart_plant_data(query):
-    facts = []
+# --- PROFESIONÁLNÍ ANALÝZA DAT ---
+def get_scored_catalog_data(query):
+    all_findings = []
     img_url = None
     
-    try:
-        with DDGS() as ddgs:
-            # 1. HLEDÁNÍ TEXTU (hledáme konkrétně "pěstování" a "vlastnosti")
-            search_results = list(ddgs.text(f"{query} vlastnosti pěstování využití", max_results=5))
-            
-            seen_sentences = set()
-            for r in search_results:
-                snippet = r['body']
-                # Rozdělení na věty
-                sentences = re.split(r'(?<=[.!?]) +', snippet)
-                for s in sentences:
-                    s = s.strip().replace("...", "")
-                    # FILTR: Hledáme věcné informace (klíčová slova)
-                    keywords = ["chuť", "aroma", "slunce", "půda", "vitamín", "výnos", "odolná", "plod", "léčiv", "vhodné", "využití"]
-                    if any(key in s.lower() for key in keywords) and len(s) < 80 and len(s) > 15:
-                        # Očištění od balastu
-                        clean_s = re.sub(r'http\S+', '', s)
-                        if clean_s not in seen_sentences:
-                            facts.append(clean_s)
-                            seen_sentences.add(clean_s)
-            
-            # 2. HLEDÁNÍ OBRÁZKU
-            img_results = list(ddgs.images(f"{query} sazenice plod detail", max_results=1))
-            if img_results:
-                img_url = img_results[0]['image']
-    except:
-        pass
-
-    # ZÁCHRANNÁ BRZDA: Pokud internet nic rozumného nenašel, nabídneme profi univerzální body
-    placeholders = [
-        "Vynikající chuť a bohaté aroma",
-        "Silná sazenice s bohatým kořenem",
-        "Vhodné pro záhony i do truhlíků",
-        "Vypěstováno lokálně bez chemie",
-        "Vysoký obsah vitamínů a minerálů",
-        "Odolná odrůda pro české zahrady"
-    ]
-    
-    while len(facts) < 8:
-        facts.append(placeholders[len(facts) % len(placeholders)])
+    with DDGS() as ddgs:
+        # Hledáme v katalozích a odborných popisech
+        search_query = f"{query} popis odrůdy charakteristika pěstování"
+        results = list(ddgs.text(search_query, max_results=8))
         
-    return facts, img_url
+        for r in results:
+            snippet = r['body']
+            # Rozdělení na věty a čištění
+            sentences = re.split(r'(?<=[.!?]) +', snippet)
+            for s in sentences:
+                s = s.strip().replace("...", "")
+                if len(s) < 15 or len(s) > 90: continue
+                
+                # Bodování relevance (profesionální klíčová slova)
+                score = 0
+                pro_keywords = {
+                    "výnos": 5, "rezistentní": 8, "odrůda": 4, "chuť": 6, "aroma": 6,
+                    "raná": 7, "pozdní": 7, "výška": 5, "plod": 4, "F1": 10, "SHU": 10,
+                    "přímý konzum": 5, "skladovatelnost": 6, "stanoviště": 4, "silice": 7
+                }
+                for kw, value in pro_keywords.items():
+                    if kw in s.lower(): score += value
+                
+                # Bonus za čísla (technické parametry)
+                if any(char.isdigit() for char in s): score += 3
+                
+                if score > 2:
+                    all_findings.append({"text": s, "score": score})
 
-# --- APLIKACE ---
-st.title("🚜 Šlapanický Cedulkovač – Profi Faktograf")
-st.write("Aplikace dohledá věcné informace o chuti, pěstování a využití rostliny.")
+        # Hledání kvalitní fotografie (plod/detail)
+        img_results = list(ddgs.images(f"{query} odrůda plod", max_results=1))
+        if img_results: img_url = img_results[0]['image']
 
-if 'all_options' not in st.session_state: st.session_state.all_options = []
-if 'img_found' not in st.session_state: st.session_state.img_found = None
+    # Seřazení podle skóre a odstranění duplicit
+    unique_findings = []
+    seen = set()
+    for item in sorted(all_findings, key=lambda x: x['score'], reverse=True):
+        short_text = item['text'][:60] # Prevence přetečení
+        if short_text.lower() not in seen:
+            unique_findings.append(short_text)
+            seen.add(short_text.lower())
+            
+    return unique_findings[:12], img_url
 
-nazev = st.text_input("Zadejte název sazenice:", placeholder="Např. Celer řapíkatý")
+# --- STREAMLIT UI ---
+st.title("🌿 Profesionální generátor cedulek")
+st.write("Automatizovaný sběr dat z odborných katalogů a šlechtitelských webů.")
 
-if st.button("🔍 Najít věcné informace"):
+if 'catalog_options' not in st.session_state: st.session_state.catalog_options = []
+if 'pro_img' not in st.session_state: st.session_state.pro_img = None
+
+nazev = st.text_input("Zadejte přesný název odrůdy/rostliny:", placeholder="Např. Rajče Bejbino F1")
+
+if st.button("🔍 Provést odbornou analýzu"):
     if nazev:
-        with st.spinner('Analyzuji odborné weby...'):
-            options, img = fetch_smart_plant_data(nazev)
-            st.session_state.all_options = options
+        with st.spinner('Prohledávám šlechtitelské databáze...'):
+            options, img = get_scored_catalog_data(nazev)
+            st.session_state.catalog_options = options
             if img:
                 try:
-                    headers = {'User-Agent': 'Mozilla/5.0'}
-                    resp = requests.get(img, headers=headers, timeout=5)
-                    st.session_state.img_found = Image.open(io.BytesIO(resp.content)).convert("RGB")
-                except: st.session_state.img_found = None
-    else: st.warning("Napište název!")
+                    resp = requests.get(img, headers={'User-Agent': 'Mozilla/5.0'}, timeout=5)
+                    st.session_state.pro_img = Image.open(io.BytesIO(resp.content)).convert("RGB")
+                except: st.session_state.pro_img = None
+    else: st.error("Zadejte název pro analýzu.")
 
 st.markdown("---")
 
-if st.session_state.all_options:
-    st.subheader("📋 Vyberte 4 nejdůležitější informace pro zákazníka")
-    st.info("Zde jsou fakta o chuti, nárocích a využití. Vyberte ty nejlepší.")
+if st.session_state.catalog_options:
+    st.subheader("📋 Výběr parametrů pro zákazníka")
+    st.info("První 4 jsou vybrány jako nejrelevantnější. Můžete je libovolně zaměnit.")
     
-    selected = st.multiselect("Vyberte z nabídky:", st.session_state.all_options, max_selections=4)
-    
-    if len(selected) == 4:
-        col1, col2 = st.columns(2)
+    # Automatický výběr prvních 4
+    default_selection = st.session_state.catalog_options[:4]
+    selected_points = st.multiselect(
+        "Vyberte/Změňte body (celkem 4):", 
+        options=st.session_state.catalog_options,
+        default=default_selection
+    )
+
+    if len(selected_points) == 4:
+        col1, col2 = st.columns([2, 1])
         with col1:
-            # Možnost finální editace (zkrácení, úprava)
-            f1 = st.text_input("Bod 1:", value=selected[0][:50])
-            f2 = st.text_input("Bod 2:", value=selected[1][:50])
-            f3 = st.text_input("Bod 3:", value=selected[2][:50])
-            f4 = st.text_input("Bod 4:", value=selected[3][:50])
+            st.write("🖋️ **Finální korekce textu:**")
+            edit1 = st.text_input("1. bod", value=selected_points[0])
+            edit2 = st.text_input("2. bod", value=selected_points[1])
+            edit3 = st.text_input("3. bod", value=selected_points[2])
+            edit4 = st.text_input("4. bod", value=selected_points[3])
         
         with col2:
-            if st.session_state.img_found:
-                st.image(st.session_state.img_found, width=200)
-            up = st.file_uploader("Nahrát vlastní fotku:", type=["jpg", "png"])
-            if up: st.session_state.img_found = Image.open(up).convert("RGB")
+            if st.session_state.pro_img:
+                st.image(st.session_state.pro_img, caption="Katalogové foto", use_column_width=True)
+            new_img = st.file_uploader("Vlastní foto (nahradí vyhledané):", type=["jpg", "png"])
+            if new_img: st.session_state.pro_img = Image.open(new_img).convert("RGB")
 
-        if st.button("✨ VYTVOŘIT PROFI CEDULKY"):
+        if st.button("🖨️ GENEROVAT PROFESIONÁLNÍ PDF"):
+            # Parametry A4 a fonty
             A4_W, A4_H = 2480, 3508
-            LABEL_W, LABEL_H = A4_W // 2, A4_H // 2
+            L_W, L_H = A4_W // 2, A4_H // 2
             canvas = Image.new('RGB', (A4_W, A4_H), 'white')
             font_p = get_czech_font()
 
-            def create_label(name, img, bullets):
-                lbl = Image.new('RGB', (LABEL_W, LABEL_H), 'white')
+            def draw_pro_label(name, img, points):
+                lbl = Image.new('RGB', (L_W, L_H), 'white')
                 d = ImageDraw.Draw(lbl)
-                y = 50
-                # Logo
+                
+                # Logo Farmy
+                y = 60
                 try:
                     logo = Image.open("logo txt farma.JPG").convert("RGBA")
-                    lw = LABEL_W - 300
+                    lw = L_W - 320
                     lh = int(lw * (logo.height / logo.width))
                     logo = logo.resize((lw, lh), Image.Resampling.LANCZOS)
-                    lbl.paste(logo, ((LABEL_W - lw) // 2, y), logo)
-                    y += lh + 25
-                except: y += 110
-                # Název
-                f_t = get_fitting_font(name.upper(), LABEL_W, 120, font_p)
-                d.text((LABEL_W//2, y + 45), name.upper(), fill="#1B5E20", anchor="mm", font=f_t)
-                y += 140
+                    lbl.paste(logo, ((L_W - lw) // 2, y), logo)
+                    y += lh + 30
+                except: y += 100
+
+                # Název (Bold, tmavě zelená)
+                f_size = 120
+                f_t = ImageFont.truetype(font_p, f_size)
+                while d.textlength(name.upper(), font=f_t) > (L_W - 140):
+                    f_size -= 5
+                    f_t = ImageFont.truetype(font_p, f_size)
+                d.text((L_W//2, y + 40), name.upper(), fill="#004D40", anchor="mm", font=f_t)
+                y += 130
+
                 # Fotka
                 if img:
-                    th = int(LABEL_H * 0.40)
+                    th = int(L_H * 0.42)
                     asp = img.width / img.height
                     tw = int(th * asp)
-                    if tw > LABEL_W - 160: tw = LABEL_W - 160; th = int(tw / asp)
+                    if tw > L_W - 180: tw = L_W - 180; th = int(tw / asp)
                     res = img.resize((tw, th), Image.Resampling.LANCZOS)
-                    lbl.paste(res, ((LABEL_W - tw) // 2, y))
+                    lbl.paste(res, ((L_W - tw) // 2, y))
                     y += th + 50
-                else: y += 320
-                # Body
-                f_b = ImageFont.truetype(font_p, 50)
-                for b in bullets:
-                    if b:
-                        d.text((115, y), f"• {b}", fill="#333333", font=f_b)
-                        y += 75
-                # Cena
-                bx_w, bx_h = 420, 155
-                bx_x, bx_y = (LABEL_W - bx_w)//2, LABEL_H - 225
-                d.rectangle([bx_x, bx_y, bx_x + bx_w, bx_y + bx_h], outline="#1B5E20", width=12)
-                d.text((bx_x + bx_w + 35, bx_y + 80), "Kč", fill="black", anchor="lm", font=ImageFont.truetype(font_p, 100))
-                d.rectangle([0, 0, LABEL_W-2, LABEL_H-2], outline="#EEEEEE", width=4)
+                else: y += 350
+
+                # Textové body
+                f_b = ImageFont.truetype(font_p, 48)
+                for p in points:
+                    d.text((120, y), f"• {p}", fill="#333333", font=f_b)
+                    y += 75
+
+                # Cenový blok
+                bx_w, bx_h = 420, 160
+                bx_x, bx_y = (L_W - bx_w)//2, L_H - 230
+                d.rectangle([bx_x, bx_y, bx_x + bx_w, bx_y + bx_h], outline="#004D40", width=14)
+                d.text((bx_x + bx_w + 35, bx_y + 85), "Kč", fill="black", anchor="lm", font=ImageFont.truetype(font_p, 100))
+                
+                d.rectangle([0, 0, L_W-2, L_H-2], outline="#E0E0E0", width=2)
                 return lbl
 
-            final_label = create_label(nazev, st.session_state.img_found, [f1, f2, f3, f4])
-            canvas.paste(final_label, (0, 0)); canvas.paste(final_label, (LABEL_W, 0))
-            canvas.paste(final_label, (0, LABEL_H)); canvas.paste(final_label, (LABEL_W, LABEL_H))
+            final_label = draw_pro_label(nazev, st.session_state.pro_img, [edit1, edit2, edit3, edit4])
+            canvas.paste(final_label, (0, 0)); canvas.paste(final_label, (L_W, 0))
+            canvas.paste(final_label, (0, L_H)); canvas.paste(final_label, (L_W, L_H))
+            
             st.image(canvas, use_column_width=True)
             buf = io.BytesIO()
             canvas.save(buf, format="PDF")
-            st.download_button(f"📥 STÁHNOUT PDF {nazev.upper()}", buf.getvalue(), f"cedulky_{clean_filename(nazev)}.pdf", "application/pdf")
+            st.download_button(f"📥 STÁHNOUT PDF: {nazev}", buf.getvalue(), f"{clean_filename(nazev)}.pdf")
+    else:
+        st.warning("Pro generování PDF musíte mít vybrány přesně 4 body.")
