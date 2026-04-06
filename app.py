@@ -8,16 +8,8 @@ from duckduckgo_search import DDGS
 
 st.set_page_config(page_title="Cedulkovač Šlapanice", layout="centered")
 
-# --- STYLIZACE ---
-st.markdown("""
-    <style>
-    .main { background-color: #f9f9f9; }
-    .stButton>button { width: 100%; border-radius: 20px; background-color: #2E7D32; color: white; }
-    </style>
-    """, unsafe_allow_html=True)
-
-st.title("🚜 Šlapanický Cedulkovač 2.1")
-st.info("Tip: Nejlepší cedulky jsou z vlastních fotek. Pokud fotku nemáte, zkusím ji najít.")
+st.title("🚜 Šlapanický Cedulkovač 2.2")
+st.info("Verze s automatickou úpravou velikosti textu.")
 
 @st.cache_resource
 def get_czech_font():
@@ -27,41 +19,44 @@ def get_czech_font():
         urllib.request.urlretrieve(url, font_path)
     return font_path
 
+# --- FUNKCE PRO DYNAMICKÉ ZMENŠENÍ PÍSMA ---
+def get_fitting_font(text, max_width, initial_size, font_path):
+    size = initial_size
+    font = ImageFont.truetype(font_path, size)
+    # Zmenšuj font, dokud je text širší než vymezený prostor (s rezervou 100px)
+    while font.getlength(text) > (max_width - 100) and size > 40:
+        size -= 5
+        font = ImageFont.truetype(font_path, size)
+    return font
+
 def search_image(query):
     try:
         with DDGS() as ddgs:
-            # Hledáme konkrétnější dotaz pro zahradnictví
             search_query = f"{query} rostlina sazenice"
             results = list(ddgs.images(search_query, max_results=1))
-            if results:
-                return results[0]['image']
-    except:
-        return None
+            if results: return results[0]['image']
+    except: return None
     return None
 
 # --- VSTUPY ---
-nazev_produktu = st.text_input("1. Zadejte název sazenice (např. Celer listový):", "")
-uploaded_file = st.file_uploader("2. Nahrajte vlastní fotku (volitelné, doporučeno):", type=["jpg", "jpeg", "png"])
+nazev_produktu = st.text_input("1. Název sazenice (i velmi dlouhý):", "")
+uploaded_file = st.file_uploader("2. Nahrajte vlastní fotku (volitelné):", type=["jpg", "jpeg", "png"])
 
 if nazev_produktu:
     img_to_use = None
-    
-    # Rozhodnutí o fotce
     if uploaded_file:
         img_to_use = Image.open(uploaded_file).convert("RGB")
     else:
-        with st.spinner('🔍 Hledám nejlepší fotku na webu...'):
+        with st.spinner('🔍 Hledám fotku...'):
             img_url = search_image(nazev_produktu)
             if img_url:
                 try:
-                    # Předstíráme prohlížeč, abychom nedostali 403
-                    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+                    headers = {'User-Agent': 'Mozilla/5.0'}
                     resp = requests.get(img_url, headers=headers, timeout=5)
                     img_to_use = Image.open(io.BytesIO(resp.content)).convert("RGB")
-                except:
-                    st.warning("Nepodařilo se automaticky stáhnout fotku z webu. Zkuste ji nahrát ručně.")
+                except: pass
 
-    if st.button("Vytvořit profesionální cedulky"):
+    if st.button("Vytvořit cedulky"):
         A4_W, A4_H = 2480, 3508
         LABEL_W, LABEL_H = A4_W // 2, A4_H // 2
         canvas = Image.new('RGB', (A4_W, A4_H), 'white')
@@ -70,50 +65,52 @@ if nazev_produktu:
         def create_label(product_name, image):
             lbl = Image.new('RGB', (LABEL_W, LABEL_H), 'white')
             d = ImageDraw.Draw(lbl)
+            product_name = product_name.upper()
             
             # 1. LOGO
             curr_y = 40
             try:
                 logo = Image.open("logo txt farma.JPG").convert("RGBA")
-                lw = LABEL_W - 200
+                lw = LABEL_W - 250
                 lh = int(lw * (logo.height / logo.width))
                 logo = logo.resize((lw, lh), Image.Resampling.LANCZOS)
                 lbl.paste(logo, ((LABEL_W - lw) // 2, curr_y), logo)
-                curr_y += lh + 40
-            except:
-                curr_y += 100
+                curr_y += lh + 30
+            except: curr_y += 100
 
-            # 2. NÁZEV
-            f_t = ImageFont.truetype(font_p, 130)
-            d.text((LABEL_W//2, curr_y + 40), product_name.upper(), fill="#1B5E20", anchor="mm", font=f_t)
+            # 2. NÁZEV (S AUTOMATICKÝM ZMENŠENÍM)
+            # Začínáme na velikosti 130, pokud je název dlouhý, zmenší se klidně na 40
+            f_t = get_fitting_font(product_name, LABEL_W, 130, font_p)
+            d.text((LABEL_W//2, curr_y + 50), product_name, fill="#1B5E20", anchor="mm", font=f_t)
             curr_y += 140
 
-            # 3. FOTKA (pokud je)
+            # 3. FOTKA
             if image:
-                target_h = int(LABEL_H * 0.4)
+                target_h = int(LABEL_H * 0.38)
                 asp = image.width / image.height
                 tw = int(target_h * asp)
-                if tw > LABEL_W - 140:
-                    tw = LABEL_W - 140
+                if tw > LABEL_W - 150:
+                    tw = LABEL_W - 150
                     target_h = int(tw / asp)
                 img_res = image.resize((tw, target_h), Image.Resampling.LANCZOS)
                 lbl.paste(img_res, ((LABEL_W - tw) // 2, curr_y))
                 curr_y += target_h + 40
-            else:
-                curr_y += 300 # Místo pro text bez fotky
+            else: curr_y += 300
 
             # 4. BODY
-            bullets = ["• Špičková šlapanická kvalita", "• Silná a zdravá sazenice", "• Připraveno k okamžité výsadbě", "• Vypěstováno bez chemie"]
-            f_b = ImageFont.truetype(font_p, 60)
+            bullets = ["• Špičková šlapanická kvalita", "• Silná a zdravá sazenice", "• Připraveno k výsadbě", "• Vypěstováno s láskou"]
+            f_b = ImageFont.truetype(font_p, 55)
             for b in bullets:
                 d.text((100, curr_y), b, fill="#333333", font=f_b)
-                curr_y += 85
+                curr_y += 75
 
             # 5. CENA
-            bx_w, bx_h = 450, 160
-            bx_x, bx_y = (LABEL_W - bx_w)//2, LABEL_H - 230
+            bx_w, bx_h = 420, 150
+            bx_x, bx_y = (LABEL_W - bx_w)//2, LABEL_H - 220
             d.rectangle([bx_x, bx_y, bx_x + bx_w, bx_y + bx_h], outline="black", width=10)
-            d.text((bx_x + bx_w + 30, bx_y + 80), "Kč", fill="black", anchor="lm", font=f_t)
+            # Kč fixní velikost
+            f_kc = ImageFont.truetype(font_p, 100)
+            d.text((bx_x + bx_w + 30, bx_y + 75), "Kč", fill="black", anchor="lm", font=f_kc)
             
             d.rectangle([0, 0, LABEL_W-2, LABEL_H-2], outline="#EEEEEE", width=4)
             return lbl
@@ -127,4 +124,4 @@ if nazev_produktu:
         st.image(canvas, use_column_width=True)
         buf = io.BytesIO()
         canvas.save(buf, format="PDF")
-        st.download_button("📥 STÁHNOUT PDF (4 CEDULKY NA A4)", buf.getvalue(), f"cedulky_{nazev_produktu}.pdf", "application/pdf")
+        st.download_button("📥 STÁHNOUT PDF", buf.getvalue(), f"cedulky.pdf", "application/pdf")
