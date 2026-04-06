@@ -4,12 +4,13 @@ import io
 import os
 import requests
 import urllib.request
+import unicodedata
 from duckduckgo_search import DDGS
 
 st.set_page_config(page_title="Cedulkovač Šlapanice", layout="centered")
 
-st.title("🚜 Šlapanický Cedulkovač 2.2")
-st.info("Verze s automatickou úpravou velikosti textu.")
+st.title("🚜 Šlapanický Cedulkovač 2.3")
+st.info("Verze s automatickým pojmenováním souboru PDF.")
 
 @st.cache_resource
 def get_czech_font():
@@ -19,15 +20,19 @@ def get_czech_font():
         urllib.request.urlretrieve(url, font_path)
     return font_path
 
-# --- FUNKCE PRO DYNAMICKÉ ZMENŠENÍ PÍSMA ---
 def get_fitting_font(text, max_width, initial_size, font_path):
     size = initial_size
     font = ImageFont.truetype(font_path, size)
-    # Zmenšuj font, dokud je text širší než vymezený prostor (s rezervou 100px)
-    while font.getlength(text) > (max_width - 100) and size > 40:
+    while font.getlength(text) > (max_width - 120) and size > 40:
         size -= 5
         font = ImageFont.truetype(font_path, size)
     return font
+
+def clean_filename(text):
+    """Převede název na bezpečné jméno souboru bez háčků a mezer."""
+    nfkd_form = unicodedata.normalize('NFKD', text)
+    only_ascii = nfkd_form.encode('ASCII', 'ignore').decode('utf-8')
+    return only_ascii.replace(" ", "_").upper()
 
 def search_image(query):
     try:
@@ -39,7 +44,7 @@ def search_image(query):
     return None
 
 # --- VSTUPY ---
-nazev_produktu = st.text_input("1. Název sazenice (i velmi dlouhý):", "")
+nazev_produktu = st.text_input("1. Název sazenice:", "")
 uploaded_file = st.file_uploader("2. Nahrajte vlastní fotku (volitelné):", type=["jpg", "jpeg", "png"])
 
 if nazev_produktu:
@@ -67,7 +72,6 @@ if nazev_produktu:
             d = ImageDraw.Draw(lbl)
             product_name = product_name.upper()
             
-            # 1. LOGO
             curr_y = 40
             try:
                 logo = Image.open("logo txt farma.JPG").convert("RGBA")
@@ -78,13 +82,10 @@ if nazev_produktu:
                 curr_y += lh + 30
             except: curr_y += 100
 
-            # 2. NÁZEV (S AUTOMATICKÝM ZMENŠENÍM)
-            # Začínáme na velikosti 130, pokud je název dlouhý, zmenší se klidně na 40
             f_t = get_fitting_font(product_name, LABEL_W, 130, font_p)
             d.text((LABEL_W//2, curr_y + 50), product_name, fill="#1B5E20", anchor="mm", font=f_t)
             curr_y += 140
 
-            # 3. FOTKA
             if image:
                 target_h = int(LABEL_H * 0.38)
                 asp = image.width / image.height
@@ -97,18 +98,15 @@ if nazev_produktu:
                 curr_y += target_h + 40
             else: curr_y += 300
 
-            # 4. BODY
             bullets = ["• Špičková šlapanická kvalita", "• Silná a zdravá sazenice", "• Připraveno k výsadbě", "• Vypěstováno s láskou"]
             f_b = ImageFont.truetype(font_p, 55)
             for b in bullets:
                 d.text((100, curr_y), b, fill="#333333", font=f_b)
                 curr_y += 75
 
-            # 5. CENA
             bx_w, bx_h = 420, 150
             bx_x, bx_y = (LABEL_W - bx_w)//2, LABEL_H - 220
             d.rectangle([bx_x, bx_y, bx_x + bx_w, bx_y + bx_h], outline="black", width=10)
-            # Kč fixní velikost
             f_kc = ImageFont.truetype(font_p, 100)
             d.text((bx_x + bx_w + 30, bx_y + 75), "Kč", fill="black", anchor="lm", font=f_kc)
             
@@ -124,4 +122,12 @@ if nazev_produktu:
         st.image(canvas, use_column_width=True)
         buf = io.BytesIO()
         canvas.save(buf, format="PDF")
-        st.download_button("📥 STÁHNOUT PDF", buf.getvalue(), f"cedulky.pdf", "application/pdf")
+        
+        # --- DYNAMICKÝ NÁZEV SOUBORU ---
+        safe_name = clean_filename(nazev_produktu)
+        st.download_button(
+            label=f"📥 STÁHNOUT PDF (cedulky_{safe_name}.pdf)",
+            data=buf.getvalue(),
+            file_name=f"cedulky_{safe_name}.pdf",
+            mime="application/pdf"
+        )
