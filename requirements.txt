@@ -1,4 +1,4 @@
 streamlit
 Pillow
-wikipedia
 requests
+duckduckgo_search
