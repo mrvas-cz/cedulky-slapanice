@@ -6,11 +6,10 @@ import requests
 import urllib.request
 import unicodedata
 import re
-import time
 from duckduckgo_search import DDGS
-from deep_translator import GoogleTranslator
+import google.generativeai as genai
 
-st.set_page_config(page_title="PRO Cedulkovač Farma", layout="wide")
+st.set_page_config(page_title="PRO Cedulkovač Farma + AI", layout="wide")
 
 @st.cache_resource
 def get_czech_font():
@@ -24,129 +23,94 @@ def clean_filename(text):
     nfkd_form = unicodedata.normalize('NFKD', text)
     return nfkd_form.encode('ASCII', 'ignore').decode('utf-8').replace(" ", "_").upper()
 
-# --- MEZINÁRODNÍ DOHLEDÁVÁNÍ DAT S PŘEKLADEM ---
-def get_scored_catalog_data(query):
-    all_findings = []
+# --- GEMINI AI PRO TEXTY & DUCKDUCKGO PRO FOTKU ---
+def get_ai_plant_data(query, api_key):
     img_url = None
-    translator = GoogleTranslator(source='auto', target='cs')
+    ai_points = []
     
+    # 1. ZÍSKÁNÍ TEXTU PŘES GOOGLE GEMINI
+    try:
+        genai.configure(api_key=api_key)
+        # Používáme rychlý a levný model (zdarma)
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        
+        prompt = f"""
+        Jsi profesionální zahradník, šlechtitel a marketingový expert.
+        Pro rostlinu nebo specifickou odrůdu '{query}' mi napiš přesně 12 faktů, 
+        které zajímají zákazníky (chuť, výnos, odolnost, nároky na slunce, ranost, atd.).
+        
+        PRAVIDLA:
+        1. Každý bod musí být extrémně stručný, maximálně 4 až 7 slov.
+        2. Piš pouze česky.
+        3. Piš každý bod na nový řádek.
+        4. Nepoužívej žádné odrážky (pomlčky, hvězdičky), číslování, ani žádný úvodní nebo závěrečný text. Jen čisté věty.
+        """
+        
+        response = model.generate_content(prompt)
+        # Rozsekání odpovědi na řádky a vyčištění
+        lines = response.text.strip().split('\n')
+        for line in lines:
+            clean_line = line.replace("*", "").replace("-", "").strip()
+            if len(clean_line) > 5:
+                ai_points.append(clean_line)
+                
+    except Exception as e:
+        st.error(f"Chyba při komunikaci s umělou inteligencí. Zkontrolujte API klíč. Detail: {e}")
+        return [], None
+
+    # 2. ZÍSKÁNÍ FOTKY PŘES DUCKDUCKGO
     try:
         with DDGS(timeout=10) as ddgs:
-            # 1. ČESKÉ HLEDÁNÍ
-            cz_query = f"{query} popis odrůdy vlastnosti pěstování"
-            cz_results = list(ddgs.text(cz_query, max_results=3))
-            time.sleep(0.5)
-            
-            # 2. MEZINÁRODNÍ HLEDÁNÍ (Nizozemí, Německo, Itálie přes globální EN výrazy)
-            en_query = f"{query} variety characteristics yield resistance seed"
-            en_results = list(ddgs.text(en_query, max_results=4))
-            time.sleep(0.5)
-            
-            combined_results = cz_results + en_results
-            
-            for r in combined_results:
-                sentences = re.split(r'(?<=[.!?]) +', r['body'])
-                for s in sentences:
-                    s = s.strip().replace("...", "")
-                    if 15 < len(s) < 120:
-                        score = 0
-                        # Klíčová slova: CZ + EN + DE (univerzální kořeny)
-                        pro_keywords = {
-                            "výnos": 5, "yield": 5, "ertrag": 5,
-                            "rezist": 8, "resist": 8, 
-                            "chuť": 6, "flavor": 6, "geschmack": 6, "taste": 6,
-                            "aroma": 6, "f1": 10, "shu": 10, "brix": 8,
-                            "raná": 7, "early": 7, "früh": 7,
-                            "odol": 6, "tolerant": 6
-                        }
-                        
-                        s_lower = s.lower()
-                        for kw, val in pro_keywords.items():
-                            if kw in s_lower: score += val
-                        if any(char.isdigit() for char in s): score += 3
-                        
-                        if score > 2:
-                            all_findings.append({"text": s, "score": score})
+            img_results = list(ddgs.images(f"{query} plant fruit detail high quality", max_results=1))
+            if img_results: img_url = img_results[0]['image']
+    except:
+        st.warning("Fotku se nepodařilo najít. Můžete nahrát vlastní.")
 
-            # 3. HLEDÁNÍ MEZINÁRODNÍHO OBRÁZKU
-            try:
-                time.sleep(0.5)
-                img_results = list(ddgs.images(f"{query} variety fruit detail", max_results=1))
-                if img_results: img_url = img_results[0]['image']
-            except: pass
-            
-    except Exception as e:
-        st.error("Vyhledávač narazil na limit. Nabízím univerzální šlechtitelská data.")
-
-    # Seřazení podle skóre
-    sorted_findings = sorted(all_findings, key=lambda x: x['score'], reverse=True)
-    
-    unique_findings = []
-    seen = set()
-    
-    # Překlad a čištění (jen u těch nejlepších, abychom šetřili čas)
-    for item in sorted_findings:
-        if len(unique_findings) >= 12: break
-        
-        original_text = item['text']
-        try:
-            # Automatický překlad do CZ (pokud to už není česky, pozná si to sám)
-            cz_text = translator.translate(original_text)
-        except:
-            cz_text = original_text # Záchrana při selhání překladače
-            
-        clean_s = cz_text[:65].strip()
-        if clean_s.lower() not in seen and len(clean_s) > 10:
-            unique_findings.append(clean_s)
-            seen.add(clean_s.lower())
-    
-    # Záložní data z katalogů, pokud se nic nenajde
-    backups = [
-        "Špičková mezinárodní odrůda s vysokým výnosem",
-        "Vynikající chuťový profil a stabilní kvalita",
-        "Silná rezistence vůči běžným chorobám",
-        "Výborná adaptabilita pro naše klimatické podmínky",
-        "Raná a spolehlivá sklizeň plodů",
-        "Osvědčená genetika od profesionálních šlechtitelů"
-    ]
-    while len(unique_findings) < 10:
-        unique_findings.append(backups[len(unique_findings) % len(backups)])
-            
-    return unique_findings[:12], img_url
+    return ai_points[:12], img_url
 
 # --- STREAMLIT UI ---
-st.title("🌍 PRO Cedulkovač: Zahraniční katalogy")
-st.write("Automatizovaný sběr dat z evropských šlechtitelských databází s překladem do češtiny.")
+# Postranní panel pro API klíč
+with st.sidebar:
+    st.header("⚙️ Nastavení AI")
+    api_key = st.text_input("Zadejte váš Google Gemini API klíč:", type="password")
+    st.markdown("[Získat API klíč zdarma zde](https://aistudio.google.com/app/apikey)")
+    st.info("Klíč je potřeba k tomu, aby aplikace mohla používat chytrou umělou inteligenci pro psaní textů.")
+
+st.title("🤖 PRO Cedulkovač: Poháněno umělou inteligencí")
+st.write("Díky Google Gemini získáte přesné, české a odborné informace k jakékoliv zahraniční i tuzemské odrůdě.")
 
 if 'catalog_options' not in st.session_state: st.session_state.catalog_options = []
 if 'pro_img' not in st.session_state: st.session_state.pro_img = None
 
-nazev = st.text_input("Zadejte název odrůdy (např. San Marzano, Gourmansun F1):")
+nazev = st.text_input("Zadejte název sazenice/odrůdy (např. Paprika Kápia, Rajče Sungold F1):")
 
-if st.button("🔍 Prohledat mezinárodní weby"):
-    if nazev:
-        with st.spinner('Analyzuji weby a překládám data do češtiny...'):
-            options, img = get_scored_catalog_data(nazev)
-            st.session_state.catalog_options = options
+if st.button("✨ Vygenerovat data přes AI"):
+    if not api_key:
+        st.error("Nejprve vlevo vložte svůj Gemini API klíč!")
+    elif nazev:
+        with st.spinner('Umělá inteligence analyzuje odrůdu a píše texty...'):
+            options, img = get_ai_plant_data(nazev, api_key)
+            if options:
+                st.session_state.catalog_options = options
             if img:
                 try:
                     resp = requests.get(img, headers={'User-Agent': 'Mozilla/5.0'}, timeout=5)
                     st.session_state.pro_img = Image.open(io.BytesIO(resp.content)).convert("RGB")
                 except: st.session_state.pro_img = None
-    else: st.error("Zadejte název.")
+    else: st.warning("Zadejte název.")
 
 st.markdown("---")
 
 if st.session_state.catalog_options:
-    st.subheader("📋 Přeložené parametry odrůdy")
+    st.subheader("📋 Výběr AI bodů na cedulku")
     
-    default_sel = st.session_state.catalog_options[:4]
-    selected_points = st.multiselect("Vyberte 4 body na cedulku:", st.session_state.catalog_options, default=default_sel)
+    default_sel = st.session_state.catalog_options[:4] if len(st.session_state.catalog_options) >=4 else st.session_state.catalog_options
+    selected_points = st.multiselect("Zde jsou data z AI. Vyberte 4 nejlepší:", st.session_state.catalog_options, default=default_sel)
 
     if len(selected_points) == 4:
         c1, c2 = st.columns([2, 1])
         with c1:
-            st.caption("Texty jsou přeloženy automatem. Zde je můžete učesat:")
+            st.caption("Finální úprava textů (můžete cokoliv přepsat):")
             e1 = st.text_input("1. bod", value=selected_points[0])
             e2 = st.text_input("2. bod", value=selected_points[1])
             e3 = st.text_input("3. bod", value=selected_points[2])
@@ -158,7 +122,7 @@ if st.session_state.catalog_options:
             new_img = st.file_uploader("Nahradit fotkou z počítače:", type=["jpg", "png"])
             if new_img: st.session_state.pro_img = Image.open(new_img).convert("RGB")
 
-        if st.button("🖨️ GENEROVAT PDF TISKOVÁ DATA"):
+        if st.button("🖨️ GENEROVAT AI PDF"):
             A4_W, A4_H = 2480, 3508
             L_W, L_H = A4_W // 2, A4_H // 2
             canvas = Image.new('RGB', (A4_W, A4_H), 'white')
@@ -194,9 +158,7 @@ if st.session_state.catalog_options:
 
                 f_b = ImageFont.truetype(font_p, 48)
                 for p in pts:
-                    # Rychlé odstranění zbytků případných cizích znaků z překladu
-                    clean_p = p[:60].replace("&#39;", "'").replace("&amp;", "&")
-                    d.text((120, y), f"• {clean_p}", fill="#333333", font=f_b)
+                    d.text((120, y), f"• {p[:60]}", fill="#333333", font=f_b)
                     y += 75
 
                 bx_w, bx_h = 420, 160
