@@ -2,3 +2,4 @@ streamlit
 Pillow
 requests
 duckduckgo_search
+wikipedia
