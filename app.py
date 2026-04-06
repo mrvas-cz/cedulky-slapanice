@@ -6,10 +6,11 @@ import requests
 import urllib.request
 import unicodedata
 import re
+import time
 from duckduckgo_search import DDGS
 import google.generativeai as genai
 
-st.set_page_config(page_title="PRO Cedulkovač Farma + AI", layout="wide")
+st.set_page_config(page_title="PRO Cedulkovač Farma", layout="wide")
 
 @st.cache_resource
 def get_czech_font():
@@ -23,102 +24,104 @@ def clean_filename(text):
     nfkd_form = unicodedata.normalize('NFKD', text)
     return nfkd_form.encode('ASCII', 'ignore').decode('utf-8').replace(" ", "_").upper()
 
-# --- INTELIGENTNÍ AI FUNKCE S FALLBACKEM ---
+# --- FUNKCE PRO ZÁCHRANNÉ HLEDÁNÍ (Když AI nejede) ---
+def get_web_fallback(query):
+    findings = []
+    try:
+        with DDGS() as ddgs:
+            res = list(ddgs.text(f"{query} popis odrůdy pěstování", max_results=5))
+            for r in res:
+                sentences = re.split(r'(?<=[.!?]) +', r['body'])
+                for s in sentences:
+                    if 15 < len(s) < 80 and any(k in s.lower() for k in ["chuť", "plod", "výnos", "odol"]):
+                        findings.append(s.strip())
+    except: pass
+    return findings[:12]
+
+# --- AI FUNKCE S CACHOVÁNÍM A ODOLNOSTÍ ---
+@st.cache_data(show_spinner=False)
 def get_ai_plant_data(query, api_key):
-    img_url = None
     ai_points = []
     
     try:
         genai.configure(api_key=api_key)
+        # Preferujeme 1.5-flash, má stabilnější kvóty pro Free Tier
+        model = genai.GenerativeModel('gemini-1.5-flash')
         
-        # Zkusíme seznam modelů, abychom našli ten nejvhodnější dostupný
-        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        
-        # Priority modelů: zkusíme 2.0, pak 1.5, pak cokoliv, co vypadá jako flash
-        target_model = None
-        for m_name in ["models/gemini-2.0-flash", "models/gemini-1.5-flash", "models/gemini-1.5-flash-latest"]:
-            if m_name in available_models:
-                target_model = m_name
-                break
-        
-        if not target_model:
-            # Pokud žádný z preferovaných není, vezmeme první dostupný flash nebo prostě první v seznamu
-            flash_models = [m for m in available_models if "flash" in m]
-            target_model = flash_models[0] if flash_models else available_models[0]
-
-        model = genai.GenerativeModel(target_model)
-        
-        prompt = f"""
-        Jsi expert na zahradnictví. Pro odrůdu '{query}' napiš přesně 12 faktů pro zákazníky.
-        Stručně (4-7 slov), česky, každý bod na nový řádek, bez odrážek a úvodu.
-        Zaměř se na: chuť, odolnost, výnos a pěstování.
-        """
-        
+        prompt = f"Odrůda: {query}. Napiš 12 stručných faktů (4-7 slov) pro zákazníky v zahradnictví. Česky, bez odrážek."
         response = model.generate_content(prompt)
+        
         lines = response.text.strip().split('\n')
         for line in lines:
-            clean_line = line.replace("*", "").replace("-", "").strip()
-            if len(clean_line) > 5:
-                ai_points.append(clean_line)
-                
+            clean_l = line.replace("*", "").replace("-", "").strip()
+            if len(clean_l) > 5: ai_points.append(clean_l)
+            
     except Exception as e:
-        st.error(f"Chyba AI: {e}")
-        # Vypíšeme dostupné modely pro ladění, pokud nastane 404
-        if "404" in str(e):
-            st.info("Zkuste v requirements.txt aktualizovat google-generativeai na nejnovější verzi.")
-        return [], None
+        if "429" in str(e):
+            st.warning("⚠️ Limit AI vyčerpán. Přepínám na záložní vyhledávání v katalozích...")
+            return get_web_fallback(query)
+        else:
+            st.error(f"Chyba AI: {e}")
+            return get_web_fallback(query)
 
-    # Hledání fotky (zůstává stejné)
+    return ai_points[:12]
+
+# --- FOTKA (Samostatně kvůli limitům) ---
+@st.cache_data(show_spinner=False)
+def get_plant_image(query):
     try:
         with DDGS(timeout=10) as ddgs:
-            img_results = list(ddgs.images(f"{query} plant fruit detail", max_results=1))
-            if img_results: img_url = img_results[0]['image']
-    except: pass
+            img_res = list(ddgs.images(f"{query} fruit detail", max_results=1))
+            if img_res: return img_res[0]['image']
+    except: return None
+    return None
 
-    return ai_points[:12], img_url
-
-# --- ZBYTEK UI ZŮSTÁVÁ STEJNÝ ---
+# --- UI ---
 with st.sidebar:
     st.header("⚙️ Nastavení")
     api_key = st.text_input("Gemini API klíč:", type="password")
-    st.markdown("[Získat API klíč](https://aistudio.google.com/app/apikey)")
+    if st.button("Vymazat paměť hledání"):
+        st.cache_data.clear()
+        st.success("Paměť vymazána.")
 
-st.title("🤖 PRO Cedulkovač: AI Edition")
+st.title("🌿 Profesionální Cedulkovač 4.0")
 
 if 'catalog_options' not in st.session_state: st.session_state.catalog_options = []
 if 'pro_img' not in st.session_state: st.session_state.pro_img = None
 
-nazev = st.text_input("Název odrůdy:")
+nazev = st.text_input("Zadejte název odrůdy:")
 
-if st.button("✨ Vygenerovat data"):
+if st.button("✨ Načíst informace"):
     if not api_key:
-        st.error("Vložte API klíč vlevo!")
+        st.error("Chybí API klíč v nastavení!")
     elif nazev:
-        with st.spinner('AI vybírá nejlepší parametry...'):
-            options, img = get_ai_plant_data(nazev, api_key)
-            if options:
-                st.session_state.catalog_options = options
-            if img:
+        with st.spinner('Získávám data...'):
+            # Získání textu (AI nebo Web)
+            st.session_state.catalog_options = get_ai_plant_data(nazev, api_key)
+            # Získání obrázku
+            img_url = get_plant_image(nazev)
+            if img_url:
                 try:
-                    resp = requests.get(img, headers={'User-Agent': 'Mozilla/5.0'}, timeout=5)
+                    resp = requests.get(img_url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=5)
                     st.session_state.pro_img = Image.open(io.BytesIO(resp.content)).convert("RGB")
                 except: st.session_state.pro_img = None
-    else: st.warning("Zadejte název.")
+    else: st.warning("Napište název.")
 
 st.markdown("---")
 
 if st.session_state.catalog_options:
-    selected_points = st.multiselect("Vyberte 4 body:", st.session_state.catalog_options, default=st.session_state.catalog_options[:4])
+    st.subheader("📋 Výběr na cedulku")
+    selected_points = st.multiselect("Vyberte 4 body:", st.session_state.catalog_options, 
+                                     default=st.session_state.catalog_options[:4] if len(st.session_state.catalog_options)>=4 else None)
 
     if len(selected_points) == 4:
         c1, c2 = st.columns([2, 1])
         with c1:
-            e1 = st.text_input("1.", value=selected_points[0]); e2 = st.text_input("2.", value=selected_points[1])
-            e3 = st.text_input("3.", value=selected_points[2]); e4 = st.text_input("4.", value=selected_points[3])
+            e = [st.text_input(f"Bod {i+1}", value=selected_points[i]) for i in range(4)]
         with c2:
-            if st.session_state.pro_img: st.image(st.session_state.pro_img)
-            new_img = st.file_uploader("Vlastní foto:", type=["jpg", "png"])
-            if new_img: st.session_state.pro_img = Image.open(new_img).convert("RGB")
+            if st.session_state.pro_img: st.image(st.session_state.pro_img, use_column_width=True)
+            f = st.file_uploader("Nahrát vlastní foto:", type=["jpg", "png"])
+            if f: st.session_state.pro_img = Image.open(f).convert("RGB")
 
         if st.button("🖨️ GENEROVAT PDF"):
             A4_W, A4_H = 2480, 3508
@@ -137,7 +140,7 @@ if st.session_state.catalog_options:
                     lbl.paste(logo, ((L_W - lw) // 2, y), logo)
                     y += logo.height + 30
                 except: y += 100
-                f_t = ImageFont.truetype(font_p, 120)
+                f_t = ImageFont.truetype(font_p, 110)
                 d.text((L_W//2, y + 40), name.upper(), fill="#004D40", anchor="mm", font=f_t)
                 y += 140
                 if img:
@@ -150,14 +153,14 @@ if st.session_state.catalog_options:
                 for p in pts:
                     d.text((120, y), f"• {p[:60]}", fill="#333333", font=f_b)
                     y += 75
-                bx_w, bx_h = 420, 160; bx_x, bx_y = (L_W - bx_w)//2, L_H - 230
+                bx_w, bx_h = 420, 160; bx_x, bx_y = (L_W - bx_w)//2, L_H - 225
                 d.rectangle([bx_x, bx_y, bx_x + bx_w, bx_y + bx_h], outline="#004D40", width=14)
                 d.text((bx_x + bx_w + 35, bx_y + 85), "Kč", fill="black", anchor="lm", font=ImageFont.truetype(font_p, 100))
                 return lbl
 
-            final = draw_label(nazev, st.session_state.pro_img, [e1, e2, e3, e4])
-            canvas.paste(final, (0, 0)); canvas.paste(final, (L_W, 0))
-            canvas.paste(final, (0, L_H)); canvas.paste(final, (L_W, L_H))
+            l_img = draw_label(nazev, st.session_state.pro_img, e)
+            canvas.paste(l_img, (0, 0)); canvas.paste(l_img, (L_W, 0))
+            canvas.paste(l_img, (0, L_H)); canvas.paste(l_img, (L_W, L_H))
             st.image(canvas, use_column_width=True)
             buf = io.BytesIO()
             canvas.save(buf, format="PDF")
