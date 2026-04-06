@@ -2,4 +2,4 @@ streamlit
 Pillow
 requests
 duckduckgo_search
-deep-translator
+google-generativeai
