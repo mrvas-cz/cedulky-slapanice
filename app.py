@@ -24,7 +24,14 @@ def clean_filename(text):
     nfkd_form = unicodedata.normalize('NFKD', text)
     return nfkd_form.encode('ASCII', 'ignore').decode('utf-8').replace(" ", "_").upper()
 
-# --- FUNKCE PRO ZÁCHRANNÉ HLEDÁNÍ (Když AI nejede) ---
+def load_image_from_url(url):
+    try:
+        resp = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=5)
+        return Image.open(io.BytesIO(resp.content)).convert("RGB")
+    except:
+        return None
+
+# --- ZÁCHRANNÉ DOHLEDÁVÁNÍ (Když AI vyčerpá limit) ---
 def get_web_fallback(query):
     findings = []
     try:
@@ -38,17 +45,14 @@ def get_web_fallback(query):
     except: pass
     return findings[:12]
 
-# --- AI FUNKCE S CACHOVÁNÍM A ODOLNOSTÍ ---
+# --- AI FUNKCE (Pamatuje si výsledky) ---
 @st.cache_data(show_spinner=False)
 def get_ai_plant_data(query, api_key):
     ai_points = []
-    
     try:
         genai.configure(api_key=api_key)
-        # Preferujeme 1.5-flash, má stabilnější kvóty pro Free Tier
         model = genai.GenerativeModel('gemini-1.5-flash')
-        
-        prompt = f"Odrůda: {query}. Napiš 12 stručných faktů (4-7 slov) pro zákazníky v zahradnictví. Česky, bez odrážek."
+        prompt = f"Odrůda: {query}. Napiš 12 stručných faktů (4-7 slov) pro zákazníky. Česky, bez odrážek."
         response = model.generate_content(prompt)
         
         lines = response.text.strip().split('\n')
@@ -58,25 +62,26 @@ def get_ai_plant_data(query, api_key):
             
     except Exception as e:
         if "429" in str(e):
-            st.warning("⚠️ Limit AI vyčerpán. Přepínám na záložní vyhledávání v katalozích...")
+            st.warning("⚠️ Limit AI vyčerpán. Přepínám na záložní vyhledávání...")
             return get_web_fallback(query)
         else:
-            st.error(f"Chyba AI: {e}")
             return get_web_fallback(query)
 
     return ai_points[:12]
 
-# --- FOTKA (Samostatně kvůli limitům) ---
+# --- GALERIE OBRÁZKŮ ---
 @st.cache_data(show_spinner=False)
-def get_plant_image(query):
+def get_plant_images(query):
+    urls = []
     try:
         with DDGS(timeout=10) as ddgs:
-            img_res = list(ddgs.images(f"{query} fruit detail", max_results=1))
-            if img_res: return img_res[0]['image']
-    except: return None
-    return None
+            # Najdeme až 8 obrázků pro výběr
+            img_res = list(ddgs.images(f"{query} fruit detail", max_results=8))
+            urls = [r['image'] for r in img_res]
+    except: pass
+    return urls
 
-# --- UI ---
+# --- UŽIVATELSKÉ ROZHRANÍ ---
 with st.sidebar:
     st.header("⚙️ Nastavení")
     api_key = st.text_input("Gemini API klíč:", type="password")
@@ -84,46 +89,75 @@ with st.sidebar:
         st.cache_data.clear()
         st.success("Paměť vymazána.")
 
-st.title("🌿 Profesionální Cedulkovač 4.0")
+st.title("🌿 Profesionální Cedulkovač 5.0 (S Galerií)")
 
+# Udržování stavu
 if 'catalog_options' not in st.session_state: st.session_state.catalog_options = []
+if 'image_urls' not in st.session_state: st.session_state.image_urls = []
 if 'pro_img' not in st.session_state: st.session_state.pro_img = None
 
-nazev = st.text_input("Zadejte název odrůdy:")
+nazev = st.text_input("Zadejte název odrůdy (např. Rajče San Marzano):")
 
-if st.button("✨ Načíst informace"):
+if st.button("✨ Načíst informace a fotky"):
     if not api_key:
-        st.error("Chybí API klíč v nastavení!")
+        st.error("Nejprve vložte API klíč v levém menu!")
     elif nazev:
-        with st.spinner('Získávám data...'):
-            # Získání textu (AI nebo Web)
+        with st.spinner('Analyzuji data a stahuji fotky...'):
+            # Texty
             st.session_state.catalog_options = get_ai_plant_data(nazev, api_key)
-            # Získání obrázku
-            img_url = get_plant_image(nazev)
-            if img_url:
-                try:
-                    resp = requests.get(img_url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=5)
-                    st.session_state.pro_img = Image.open(io.BytesIO(resp.content)).convert("RGB")
-                except: st.session_state.pro_img = None
-    else: st.warning("Napište název.")
+            # Fotky
+            st.session_state.image_urls = get_plant_images(nazev)
+            # Automaticky nastavíme první fotku jako výchozí
+            if st.session_state.image_urls:
+                st.session_state.pro_img = load_image_from_url(st.session_state.image_urls[0])
+            else:
+                st.session_state.pro_img = None
+    else: st.warning("Zadejte název sazenice.")
 
 st.markdown("---")
 
+# Pokud máme data, zobrazíme editor
 if st.session_state.catalog_options:
-    st.subheader("📋 Výběr na cedulku")
-    selected_points = st.multiselect("Vyberte 4 body:", st.session_state.catalog_options, 
-                                     default=st.session_state.catalog_options[:4] if len(st.session_state.catalog_options)>=4 else None)
+    st.subheader("📋 1. Výběr textů na cedulku")
+    selected_points = st.multiselect(
+        "Vyberte 4 body:", 
+        st.session_state.catalog_options, 
+        default=st.session_state.catalog_options[:4] if len(st.session_state.catalog_options)>=4 else None
+    )
 
     if len(selected_points) == 4:
         c1, c2 = st.columns([2, 1])
         with c1:
             e = [st.text_input(f"Bod {i+1}", value=selected_points[i]) for i in range(4)]
         with c2:
-            if st.session_state.pro_img: st.image(st.session_state.pro_img, use_column_width=True)
-            f = st.file_uploader("Nahrát vlastní foto:", type=["jpg", "png"])
+            st.write("**Aktuálně vybraná fotka:**")
+            if st.session_state.pro_img: 
+                st.image(st.session_state.pro_img, use_column_width=True)
+            f = st.file_uploader("Nebo nahrát vlastní foto z PC:", type=["jpg", "png"])
             if f: st.session_state.pro_img = Image.open(f).convert("RGB")
 
-        if st.button("🖨️ GENEROVAT PDF"):
+        # --- GALERIE ---
+        if st.session_state.image_urls:
+            st.markdown("---")
+            st.subheader("🖼️ 2. Výběr fotky z internetu")
+            st.write("Klikněte na 'Použít fotku' pod obrázkem, který se vám nejvíce líbí.")
+            
+            # Vytvoření mřížky 4 sloupců
+            cols = st.columns(4)
+            for i, url in enumerate(st.session_state.image_urls):
+                with cols[i % 4]:
+                    try:
+                        st.image(url, use_column_width=True)
+                        if st.button("✅ Použít fotku", key=f"img_btn_{i}"):
+                            with st.spinner("Měním fotku..."):
+                                st.session_state.pro_img = load_image_from_url(url)
+                    except:
+                        pass # Pokud odkaz z internetu nefunguje, přeskočí se
+
+        st.markdown("---")
+        
+        # --- GENERÁTOR PDF ---
+        if st.button("🖨️ 3. GENEROVAT FINÁLNÍ PDF", type="primary"):
             A4_W, A4_H = 2480, 3508
             L_W, L_H = A4_W // 2, A4_H // 2
             canvas = Image.new('RGB', (A4_W, A4_H), 'white')
@@ -164,4 +198,4 @@ if st.session_state.catalog_options:
             st.image(canvas, use_column_width=True)
             buf = io.BytesIO()
             canvas.save(buf, format="PDF")
-            st.download_button(f"📥 PDF {nazev}", buf.getvalue(), f"{clean_filename(nazev)}.pdf")
+            st.download_button(f"📥 STÁHNOUT PDF: {nazev}", buf.getvalue(), f"{clean_filename(nazev)}.pdf")
