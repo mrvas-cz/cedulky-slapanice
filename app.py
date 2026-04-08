@@ -11,7 +11,7 @@ import textwrap
 
 # --- 1. KONFIGURACE ---
 DB_DIR = "archiv_cedulek"
-KATEGORIE = ["Papriky - Sladké", "Papriky - Pálivé", "Rajčata", "Sadba", "Bylinky", "Ostatní"]
+KATEGORIE = ["Papriky - Sladké", "Papriky - Pálivé", "Rajčata", "Sadba", "Bylinky", "Květiny", "Ostatní"]
 
 if not os.path.exists(DB_DIR): os.makedirs(DB_DIR)
 
@@ -117,7 +117,7 @@ def draw_justified_paragraph(d, text, start_x, start_y, max_w, max_h, font_bold_
                 
         y += line_spacing
 
-def draw_label(name, img_plant, lines_text, shu_text, font_bold, font_reg):
+def draw_label(name, img_plant, lines_text, shu_text, cat, font_bold, font_reg):
     A4_W, A4_H = 2480, 3508
     L_W, L_H = A4_W // 2, A4_H // 2
     lbl = Image.new('RGB', (L_W, L_H), 'white')
@@ -154,7 +154,11 @@ def draw_label(name, img_plant, lines_text, shu_text, font_bold, font_reg):
         y += 20 
     
     if img_plant:
-        img_scale = 0.38 if (shu_text and shu_text.strip()) else 0.42
+        # OBŘÍ OBRÁZEK PRO KVĚTINY (Úspora textu symbolem)
+        if cat == "Květiny": img_scale = 0.46
+        elif shu_text and shu_text.strip(): img_scale = 0.38
+        else: img_scale = 0.42
+            
         max_th, max_tw = int(L_H * img_scale), L_W - 160 
         w, h = img_plant.size
         ratio = min(max_tw/w, max_th/h)
@@ -168,7 +172,7 @@ def draw_label(name, img_plant, lines_text, shu_text, font_bold, font_reg):
         lbl.paste(resized_img, (img_x, img_y))
         y += new_size[1] + 50 
         
-    valid_lines = [r.strip() for r in lines_text if r.strip() and not r.endswith(": | ")]
+    valid_lines = [r.strip() for r in lines_text if r.strip() and not r.endswith(": | ") and not r.endswith(": ")]
     combined_text = " ".join(valid_lines)
     
     price_y_start = L_H - 220
@@ -206,6 +210,23 @@ def sync_to_d():
     st.session_state.d["r4"] = get_current("r4")
     st.session_state.d["shu"] = get_current("shu")
 
+def apply_template(cat):
+    if cat == "Bylinky":
+        st.session_state.d["r1"] = "Stanoviště: | Zálivka: "
+        st.session_state.d["r2"] = "Spon: | Výška: "
+        st.session_state.d["r3"] = "Typ: | Sběr: "
+        st.session_state.d["r4"] = "Použití: | Tip: "
+    elif cat == "Květiny":
+        st.session_state.d["r1"] = "Tvar: | Životnost: "
+        st.session_state.d["r2"] = "✿ Květ: "
+        st.session_state.d["r3"] = "☀ Stanoviště: "
+        st.session_state.d["r4"] = "💧 Zálivka: "
+    else:
+        st.session_state.d["r1"] = "Stanoviště: | Zálivka: "
+        st.session_state.d["r2"] = "Spon: | Výška: "
+        st.session_state.d["r3"] = "Plod: | Hmotnost: "
+        st.session_state.d["r4"] = "Použití: | Tip: "
+
 # --- 4. APLIKACE A UI ---
 st.title("🌿 Farmářský Systém: Generátor Cedulek")
 
@@ -235,18 +256,14 @@ with tab1:
                 matched_cat = "Papriky - Sladké"
             elif any(x in ln for x in ["bazalka", "pažitka", "bylink", "máta", "koriandr", "tymián"]):
                 matched_cat = "Bylinky"
+            elif any(x in ln for x in ["muškát", "petúni", "surfin", "begóni", "pelargoni", "aksamitník", "afrikán", "kytka", "květin", "macešk", "lobelk", "fuchsi"]):
+                matched_cat = "Květiny"
             
             st.session_state.d["last_name_check"] = curr_name
             if matched_cat and st.session_state.d.get("cat") != matched_cat:
                 sync_to_d() 
                 st.session_state.d["cat"] = matched_cat
-                
-                # Změna šablony třetího řádku podle kategorie
-                if matched_cat == "Bylinky" and st.session_state.d["r3"] == "Plod: | Hmotnost: ":
-                    st.session_state.d["r3"] = "Typ: | Sběr: "
-                elif matched_cat != "Bylinky" and st.session_state.d["r3"] == "Typ: | Sběr: ":
-                    st.session_state.d["r3"] = "Plod: | Hmotnost: "
-                
+                apply_template(matched_cat) # Automaticky přepíše řádky podle toho, o co jde
                 st.session_state.form_key = str(uuid.uuid4())
                 st.rerun()
         
@@ -267,29 +284,32 @@ with tab1:
         cat_idx = KATEGORIE.index(st.session_state.d["cat"]) if st.session_state.d["cat"] in KATEGORIE else KATEGORIE.index("Ostatní")
         selected_cat = st.selectbox("Kategorie pro uložení:", KATEGORIE, index=cat_idx, key=c_key("cat"))
         
-        # Manuální změna kategorie také přepíše šablonu (pokud není vyplněna manuálně)
         if selected_cat != st.session_state.d["cat"]:
             sync_to_d()
             st.session_state.d["cat"] = selected_cat
-            if selected_cat == "Bylinky" and st.session_state.d["r3"] == "Plod: | Hmotnost: ":
-                st.session_state.d["r3"] = "Typ: | Sběr: "
-            elif selected_cat != "Bylinky" and st.session_state.d["r3"] == "Typ: | Sběr: ":
-                st.session_state.d["r3"] = "Plod: | Hmotnost: "
+            apply_template(selected_cat)
             st.session_state.form_key = str(uuid.uuid4())
             st.rerun()
 
         if curr_name:
             st.info("🤖 **Prompt pro AI (Zkopírujte):**")
             
-            # Dynamický prompt podle kategorie
-            shu_prompt_addon = "\nŘ5: Pálivost: [Slovní popis, např. Extrémně pálivá] | SHU: [Číslo]" if st.session_state.d["cat"] == "Papriky - Pálivé" else ""
-            r3_prompt = "Ř3: Typ: ... | Sběr: ..." if st.session_state.d["cat"] == "Bylinky" else "Ř3: Plod: ... | Hmotnost: ..."
-            
-            ai_prompt = f"Jsi odborník. Hledáme odrůdu: {curr_name}.\n!!! KRITICKÁ PRAVIDLA:\n1. OVĚŘ A OPRAV NÁZEV: Zjisti přesný oficiální název (např. 'rajče start' -> 'Rajče Start F1').\n2. PIŠ EXTRÉMNĚ STRUČNĚ (max 6 slov na řádek).\n3. PIŠ LAICKY PRO BĚŽNÉHO SPOTŘEBITELE. VYNECH VŠECHNA CIZÍ NEBO ODBORNÁ SLOVA. !!!\nVypiš to přesně takto:\nPŘESNÝ NÁZEV: (doplň oficiální název)\nŘ1: Stanoviště: ... | Zálivka: ...\nŘ2: Spon: ... | Výška: ...\n{r3_prompt}\nŘ4: Použití: ... | Tip: ...{shu_prompt_addon}"
+            # CHYTRÝ PROMPT DLE KATEGORIE
+            cat = st.session_state.d["cat"]
+            if cat == "Papriky - Pálivé":
+                specifics = "Ř1: Stanoviště: ... | Zálivka: ...\nŘ2: Spon: ... | Výška: ...\nŘ3: Plod: ... | Hmotnost: ...\nŘ4: Použití: ... | Tip: ...\nŘ5: Pálivost: [Slovní popis, např. Extrémně pálivá] | SHU: [Číslo]"
+            elif cat == "Bylinky":
+                specifics = "Ř1: Stanoviště: ... | Zálivka: ...\nŘ2: Spon: ... | Výška: ...\nŘ3: Typ: [Trvalka/Letnička] | Sběr: [Květen - Září]\nŘ4: Použití: ... | Tip: ..."
+            elif cat == "Květiny":
+                specifics = "Ř1: Tvar: [Převis/Polopřevis/Vzpřímená] | Životnost: [Letnička/Trvalka/Dvouletka]\nŘ2: ✿ [Měsíce kvetení římsky, např. V-IX]\nŘ3: ☀ [Slunné] nebo ☁ [Stinné]\nŘ4: 💧💧💧 [Hojná zálivka] nebo 💧 [Mírná]"
+            else:
+                specifics = "Ř1: Stanoviště: ... | Zálivka: ...\nŘ2: Spon: ... | Výška: ...\nŘ3: Plod: ... | Hmotnost: ...\nŘ4: Použití: ... | Tip: ..."
+
+            ai_prompt = f"Jsi odborník. Hledáme odrůdu: {curr_name}.\n!!! KRITICKÁ PRAVIDLA:\n1. OVĚŘ A OPRAV NÁZEV: Zjisti přesný oficiální název (např. 'rajče start' -> 'Rajče Start F1').\n2. PIŠ EXTRÉMNĚ STRUČNĚ (max 6 slov na řádek).\n3. PIŠ LAICKY PRO BĚŽNÉHO SPOTŘEBITELE. VYNECH VŠECHNA CIZÍ NEBO ODBORNÁ SLOVA. !!!\nVypiš to přesně takto:\nPŘESNÝ NÁZEV: (doplň oficiální název)\n{specifics}"
             st.code(ai_prompt, language="text")
 
             q = curr_name.replace(" ", "+")
-            st.markdown(f"🔍 [Obrázky Google](https://google.cz/search?tbm=isch&q={q}+fruit+macro+white+background) | [Data Itálie](https://translate.google.com/translate?sl=auto&tl=cs&u=https://www.google.com/search?q={q}+varieta+peso) | [Data Nizozemí](https://translate.google.com/translate?sl=auto&tl=cs&u=https://www.google.com/search?q={q}+ras+kenmerken)")
+            st.markdown(f"🔍 [Obrázky Google](https://google.cz/search?tbm=isch&q={q}+flower+macro+white+background) | [Data Itálie](https://translate.google.com/translate?sl=auto&tl=cs&u=https://www.google.com/search?q={q}+varieta+peso) | [Data Nizozemí](https://translate.google.com/translate?sl=auto&tl=cs&u=https://www.google.com/search?q={q}+ras+kenmerken)")
 
         up_file = st.file_uploader("📸 Nahrát staženou fotku:", type=["jpg", "png", "jpeg"], key=c_key("img_up"))
         if up_file:
@@ -321,21 +341,22 @@ with tab1:
             st.session_state.form_key = str(uuid.uuid4())
             st.rerun()
 
-        # Pokud jsme v chilli, políčko se ukáže. Může se nechat prázdné.
         if st.session_state.d["cat"] == "Papriky - Pálivé":
             st.session_state.d["shu"] = st.text_input("🌶️ Pálivost (SHU) - Vykreslí se velkým červeným písmem:", value=st.session_state.d.get("shu", ""), max_chars=65, key=c_key("shu"), placeholder="Např. Středně pálivá | 30 000 SHU")
         else:
-            # Abychom ho skryli, ale neztratili data při překlikávání
             st.session_state.d["shu"] = get_current("shu")
         
-        st.text_input("Řádek 1 (Stanoviště/Zálivka):", value=st.session_state.d["r1"], max_chars=65, key=c_key("r1"))
-        st.text_input("Řádek 2 (Spon/Výška):", value=st.session_state.d["r2"], max_chars=65, key=c_key("r2"))
-        
-        # Dynamický nadpis pro řádek 3
-        r3_label = "Řádek 3 (Typ/Sběr):" if st.session_state.d["cat"] == "Bylinky" else "Řádek 3 (Plod/Hmotnost):"
-        st.text_input(r3_label, value=st.session_state.d["r3"], max_chars=65, key=c_key("r3"))
-        
-        st.text_input("Řádek 4 (Použití/Tip):", value=st.session_state.d["r4"], max_chars=65, key=c_key("r4"))
+        # Dynamické názvy řádků v editoru podle toho, co jsme vybrali
+        c = st.session_state.d["cat"]
+        lbl_r1 = "Řádek 1 (Tvar/Životnost):" if c == "Květiny" else "Řádek 1 (Stanoviště/Zálivka):"
+        lbl_r2 = "Řádek 2 (Květ):" if c == "Květiny" else "Řádek 2 (Spon/Výška):"
+        lbl_r3 = "Řádek 3 (Stanoviště):" if c == "Květiny" else ("Řádek 3 (Typ/Sběr):" if c == "Bylinky" else "Řádek 3 (Plod/Hmotnost):")
+        lbl_r4 = "Řádek 4 (Zálivka):" if c == "Květiny" else "Řádek 4 (Použití/Tip):"
+
+        st.text_input(lbl_r1, value=st.session_state.d["r1"], max_chars=65, key=c_key("r1"))
+        st.text_input(lbl_r2, value=st.session_state.d["r2"], max_chars=65, key=c_key("r2"))
+        st.text_input(lbl_r3, value=st.session_state.d["r3"], max_chars=65, key=c_key("r3"))
+        st.text_input(lbl_r4, value=st.session_state.d["r4"], max_chars=65, key=c_key("r4"))
 
         st.markdown("<br>", unsafe_allow_html=True)
         col_btn1, col_btn2 = st.columns(2)
@@ -376,6 +397,7 @@ with tab1:
     c_name = get_current("name")
     c_img = st.session_state.d.get("img")
     c_shu = get_current("shu") if st.session_state.d["cat"] == "Papriky - Pálivé" else ""
+    c_cat = st.session_state.d["cat"]
     
     if c_name and c_img:
         st.markdown("---")
@@ -384,10 +406,10 @@ with tab1:
             f_b, f_r = get_czech_font("Bold"), get_czech_font("Regular")
             lines = [get_current("r1"), get_current("r2"), get_current("r3"), get_current("r4")]
             
-            valid_lines = [r for r in lines if r.strip() and not r.endswith(": | ")]
+            valid_lines = [r for r in lines if r.strip() and not r.endswith(": | ") and r.strip() != "✿" and r.strip() != "☀" and r.strip() != "💧"]
             if not valid_lines: valid_lines = lines
 
-            single_lbl = draw_label(c_name, c_img, valid_lines, c_shu, f_b, f_r)
+            single_lbl = draw_label(c_name, c_img, valid_lines, c_shu, c_cat, f_b, f_r)
 
             canvas = Image.new('RGB', (2480, 3508), 'white')
             canvas.paste(single_lbl, (0, 0))
