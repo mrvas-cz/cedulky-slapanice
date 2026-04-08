@@ -132,7 +132,6 @@ def draw_label(name, img_plant, lines_text, shu_text, font_bold, font_reg):
         y += logo.height + 40
     except: y += 100
     
-    # NÁZEV (S auto-zmenšováním)
     title_size = 90
     f_t = ImageFont.truetype(font_bold, title_size) if font_bold else ImageFont.load_default()
     while font_bold and d.textlength(name.upper(), font=f_t) > (L_W - 80) and title_size > 40:
@@ -142,21 +141,18 @@ def draw_label(name, img_plant, lines_text, shu_text, font_bold, font_reg):
     d.text((L_W//2, y), name.upper(), fill="#004D40", anchor="mt", font=f_t)
     y += int(title_size * 1.3) + 10 
     
-    # OPRAVENO: PÁLIVOST (SHU) - Nyní s dynamickým Auto-Scale, aby nikdy nepřetekla okraje!
     if shu_text and shu_text.strip():
         shu_size = 70
         f_shu = ImageFont.truetype(font_bold, shu_size) if font_bold else ImageFont.load_default()
-        # Zmenšuje, dokud se text bezpečně nevejde do cedulky (s rezervou 100px)
         while font_bold and d.textlength(shu_text.upper(), font=f_shu) > (L_W - 100) and shu_size > 30:
             shu_size -= 5
             f_shu = ImageFont.truetype(font_bold, shu_size)
             
         d.text((L_W//2, y), shu_text.upper(), fill="#D32F2F", anchor="mt", font=f_shu) 
-        y += int(shu_size * 1.3) + 10  # Dynamická mezera podle výsledné velikosti písma
+        y += int(shu_size * 1.3) + 10 
     else:
         y += 20 
     
-    # FOTKA
     if img_plant:
         img_scale = 0.38 if (shu_text and shu_text.strip()) else 0.42
         max_th, max_tw = int(L_H * img_scale), L_W - 160 
@@ -172,7 +168,6 @@ def draw_label(name, img_plant, lines_text, shu_text, font_bold, font_reg):
         lbl.paste(resized_img, (img_x, img_y))
         y += new_size[1] + 50 
         
-    # TEXTY
     valid_lines = [r.strip() for r in lines_text if r.strip() and not r.endswith(": | ")]
     combined_text = " ".join(valid_lines)
     
@@ -181,7 +176,6 @@ def draw_label(name, img_plant, lines_text, shu_text, font_bold, font_reg):
     
     draw_justified_paragraph(d, combined_text, 100, y, L_W - 200, max_text_height, font_bold, font_reg)
         
-    # CENA
     bx_w, bx_h, bx_y = 420, 160, price_y_start
     d.rectangle([(L_W-bx_w)//2, bx_y, (L_W+bx_w)//2, bx_y+bx_h], outline="#004D40", width=12)
     f_p = ImageFont.truetype(font_bold, 100) if font_bold else ImageFont.load_default()
@@ -246,6 +240,13 @@ with tab1:
             if matched_cat and st.session_state.d.get("cat") != matched_cat:
                 sync_to_d() 
                 st.session_state.d["cat"] = matched_cat
+                
+                # Změna šablony třetího řádku podle kategorie
+                if matched_cat == "Bylinky" and st.session_state.d["r3"] == "Plod: | Hmotnost: ":
+                    st.session_state.d["r3"] = "Typ: | Sběr: "
+                elif matched_cat != "Bylinky" and st.session_state.d["r3"] == "Typ: | Sběr: ":
+                    st.session_state.d["r3"] = "Plod: | Hmotnost: "
+                
                 st.session_state.form_key = str(uuid.uuid4())
                 st.rerun()
         
@@ -264,12 +265,27 @@ with tab1:
                 st.rerun()
 
         cat_idx = KATEGORIE.index(st.session_state.d["cat"]) if st.session_state.d["cat"] in KATEGORIE else KATEGORIE.index("Ostatní")
-        st.session_state.d["cat"] = st.selectbox("Kategorie pro uložení:", KATEGORIE, index=cat_idx, key=c_key("cat"))
+        selected_cat = st.selectbox("Kategorie pro uložení:", KATEGORIE, index=cat_idx, key=c_key("cat"))
+        
+        # Manuální změna kategorie také přepíše šablonu (pokud není vyplněna manuálně)
+        if selected_cat != st.session_state.d["cat"]:
+            sync_to_d()
+            st.session_state.d["cat"] = selected_cat
+            if selected_cat == "Bylinky" and st.session_state.d["r3"] == "Plod: | Hmotnost: ":
+                st.session_state.d["r3"] = "Typ: | Sběr: "
+            elif selected_cat != "Bylinky" and st.session_state.d["r3"] == "Typ: | Sběr: ":
+                st.session_state.d["r3"] = "Plod: | Hmotnost: "
+            st.session_state.form_key = str(uuid.uuid4())
+            st.rerun()
 
         if curr_name:
             st.info("🤖 **Prompt pro AI (Zkopírujte):**")
+            
+            # Dynamický prompt podle kategorie
             shu_prompt_addon = "\nŘ5: Pálivost: [Slovní popis, např. Extrémně pálivá] | SHU: [Číslo]" if st.session_state.d["cat"] == "Papriky - Pálivé" else ""
-            ai_prompt = f"Jsi odborník. Hledáme odrůdu: {curr_name}.\n!!! KRITICKÁ PRAVIDLA:\n1. OVĚŘ A OPRAV NÁZEV: Zjisti přesný oficiální název (např. 'rajče start' -> 'Rajče Start F1').\n2. PIŠ EXTRÉMNĚ STRUČNĚ (max 6 slov na řádek).\n3. PIŠ LAICKY PRO BĚŽNÉHO SPOTŘEBITELE. VYNECH VŠECHNA CIZÍ NEBO ODBORNÁ SLOVA. !!!\nVypiš to přesně takto:\nPŘESNÝ NÁZEV: (doplň oficiální název)\nŘ1: Stanoviště: ... | Zálivka: ...\nŘ2: Spon: ... | Výška: ...\nŘ3: Plod: ... | Hmotnost: ...\nŘ4: Použití: ... | Tip: ...{shu_prompt_addon}"
+            r3_prompt = "Ř3: Typ: ... | Sběr: ..." if st.session_state.d["cat"] == "Bylinky" else "Ř3: Plod: ... | Hmotnost: ..."
+            
+            ai_prompt = f"Jsi odborník. Hledáme odrůdu: {curr_name}.\n!!! KRITICKÁ PRAVIDLA:\n1. OVĚŘ A OPRAV NÁZEV: Zjisti přesný oficiální název (např. 'rajče start' -> 'Rajče Start F1').\n2. PIŠ EXTRÉMNĚ STRUČNĚ (max 6 slov na řádek).\n3. PIŠ LAICKY PRO BĚŽNÉHO SPOTŘEBITELE. VYNECH VŠECHNA CIZÍ NEBO ODBORNÁ SLOVA. !!!\nVypiš to přesně takto:\nPŘESNÝ NÁZEV: (doplň oficiální název)\nŘ1: Stanoviště: ... | Zálivka: ...\nŘ2: Spon: ... | Výška: ...\n{r3_prompt}\nŘ4: Použití: ... | Tip: ...{shu_prompt_addon}"
             st.code(ai_prompt, language="text")
 
             q = curr_name.replace(" ", "+")
@@ -305,11 +321,20 @@ with tab1:
             st.session_state.form_key = str(uuid.uuid4())
             st.rerun()
 
-        st.session_state.d["shu"] = st.text_input("🌶️ Pálivost (SHU) - Vykreslí se velkým červeným písmem:", value=st.session_state.d.get("shu", ""), max_chars=65, key=c_key("shu"), placeholder="Např. Středně pálivá | 30 000 SHU")
+        # Pokud jsme v chilli, políčko se ukáže. Může se nechat prázdné.
+        if st.session_state.d["cat"] == "Papriky - Pálivé":
+            st.session_state.d["shu"] = st.text_input("🌶️ Pálivost (SHU) - Vykreslí se velkým červeným písmem:", value=st.session_state.d.get("shu", ""), max_chars=65, key=c_key("shu"), placeholder="Např. Středně pálivá | 30 000 SHU")
+        else:
+            # Abychom ho skryli, ale neztratili data při překlikávání
+            st.session_state.d["shu"] = get_current("shu")
         
         st.text_input("Řádek 1 (Stanoviště/Zálivka):", value=st.session_state.d["r1"], max_chars=65, key=c_key("r1"))
         st.text_input("Řádek 2 (Spon/Výška):", value=st.session_state.d["r2"], max_chars=65, key=c_key("r2"))
-        st.text_input("Řádek 3 (Plod/Hmotnost):", value=st.session_state.d["r3"], max_chars=65, key=c_key("r3"))
+        
+        # Dynamický nadpis pro řádek 3
+        r3_label = "Řádek 3 (Typ/Sběr):" if st.session_state.d["cat"] == "Bylinky" else "Řádek 3 (Plod/Hmotnost):"
+        st.text_input(r3_label, value=st.session_state.d["r3"], max_chars=65, key=c_key("r3"))
+        
         st.text_input("Řádek 4 (Použití/Tip):", value=st.session_state.d["r4"], max_chars=65, key=c_key("r4"))
 
         st.markdown("<br>", unsafe_allow_html=True)
@@ -350,7 +375,8 @@ with tab1:
     # --- NÁHLED A TISK ---
     c_name = get_current("name")
     c_img = st.session_state.d.get("img")
-    c_shu = get_current("shu")
+    c_shu = get_current("shu") if st.session_state.d["cat"] == "Papriky - Pálivé" else ""
+    
     if c_name and c_img:
         st.markdown("---")
         st.subheader("🖨️ Náhled a Tisk (A4)")
