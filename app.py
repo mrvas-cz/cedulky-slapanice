@@ -7,6 +7,7 @@ import unicodedata
 import textwrap
 import json
 import shutil
+import uuid
 
 # --- 1. KONFIGURACE ---
 DB_DIR = "archiv_cedulek"
@@ -97,7 +98,7 @@ def draw_label(name, img_plant, lines_text, font_bold, font_reg):
     d.rectangle([0, 0, L_W-1, L_H-1], outline="#EEEEEE", width=3)
     return lbl
 
-# --- 3. PAMĚŤ ---
+# --- 3. PAMĚŤ (SESSION STATE) ---
 if 'form_name' not in st.session_state: st.session_state.form_name = ""
 if 'form_r1' not in st.session_state: st.session_state.form_r1 = "Stanoviště: | Zálivka: "
 if 'form_r2' not in st.session_state: st.session_state.form_r2 = "Spon: | Výška: "
@@ -105,13 +106,13 @@ if 'form_r3' not in st.session_state: st.session_state.form_r3 = "Plod: | Hmotno
 if 'form_r4' not in st.session_state: st.session_state.form_r4 = "Použití: | Tip: "
 if 'form_img' not in st.session_state: st.session_state.form_img = None
 if 'ai_input_text' not in st.session_state: st.session_state.ai_input_text = ""
+if 'uploader_key' not in st.session_state: st.session_state.uploader_key = str(uuid.uuid4()) # Trik na fotku
 
 def process_ai_input():
     text = st.session_state.ai_input_text
     if not text: return
     clean_text = text.replace("**", "").replace("*", "")
     for line in clean_text.split('\n'):
-        # Oříznutí na 65 znaků rovnou při importu, aby se text zaručeně vešel
         if "Ř1:" in line: st.session_state.form_r1 = line.split("Ř1:")[1].strip()[:65]
         elif "Ř2:" in line: st.session_state.form_r2 = line.split("Ř2:")[1].strip()[:65]
         elif "Ř3:" in line: st.session_state.form_r3 = line.split("Ř3:")[1].strip()[:65]
@@ -125,6 +126,7 @@ def reset_form():
     st.session_state.form_r4 = "Použití: | Tip: "
     st.session_state.form_img = None
     st.session_state.ai_input_text = ""
+    st.session_state.uploader_key = str(uuid.uuid4()) # Obnovení klíče pro smazání fotky z uploaderu
 
 # --- 4. APLIKACE A UI ---
 st.title("🌿 Farmářský Systém: Generátor Cedulek")
@@ -143,7 +145,6 @@ with tab1:
         
         if current_name:
             st.info("🤖 **Prompt pro AI (Zkopírujte):**")
-            # Upravený agresivní prompt
             ai_prompt = f"""Jsi odborník. Najdi o odrůdě {current_name} tyto údaje.
 !!! KRITICKÉ PRAVIDLO: PIŠ EXTRÉMNĚ STRUČNĚ, POUZE HESLA. KAŽDÝ ŘÁDEK SMÍ MÍT MAXIMÁLNĚ 6 AŽ 7 SLOV CELKEM !!!
 Vypiš je přesně takto:
@@ -154,24 +155,23 @@ Vypiš je přesně takto:
             st.code(ai_prompt, language="text")
             
             q = current_name.replace(" ", "+")
-            st.markdown(f"🔍 [Obrázky Google](https://google.cz/search?tbm=isch&q={q}+fruit+macro) | [Data Itálie](https://translate.google.com/translate?sl=auto&tl=cs&u=https://www.google.com/search?q={q}+varieta+peso) | [Data Nizozemí](https://translate.google.com/translate?sl=auto&tl=cs&u=https://www.google.com/search?q={q}+ras+kenmerken)")
+            st.markdown(f"🔍 [Obrázky Google](https://google.cz/search?tbm=isch&q={q}+fruit+macro+white+background) | [Data Itálie](https://translate.google.com/translate?sl=auto&tl=cs&u=https://www.google.com/search?q={q}+varieta+peso) | [Data Nizozemí](https://translate.google.com/translate?sl=auto&tl=cs&u=https://www.google.com/search?q={q}+ras+kenmerken)")
 
         selected_cat = st.selectbox("Kategorie pro uložení:", KATEGORIE)
         
-        uploaded_file = st.file_uploader("📸 Nahrát staženou fotku:", type=["jpg", "png", "jpeg"])
+        # Dynamický klíč zajistí resetování uploaderu
+        uploaded_file = st.file_uploader("📸 Nahrát staženou fotku:", type=["jpg", "png", "jpeg"], key=st.session_state.uploader_key)
         if uploaded_file:
             st.session_state.form_img = Image.open(uploaded_file).convert("RGB")
-            st.success("Fotka načtena!")
             
         if st.session_state.form_img:
             st.image(st.session_state.form_img, width=180, caption="Aktuální fotka na cedulku")
 
     with col_data:
-        st.header("2. Obsah Cedulky (Max 6-7 slov)")
+        st.header("2. Obsah Cedulky")
         
         st.text_area("Vložit výsledek z AI (automaticky ořízne přebytek):", key="ai_input_text", on_change=process_ai_input, height=120, placeholder="Vložte zkopírovaný text z Gemini sem a klikněte mimo toto pole...")
         
-        # Omezení znaků přímo na inputech (max_chars=65 garantuje čitelnost na cedulce)
         st.text_input("Řádek 1 (Stanoviště/Zálivka):", key="form_r1", max_chars=65)
         st.text_input("Řádek 2 (Spon/Výška):", key="form_r2", max_chars=65)
         st.text_input("Řádek 3 (Plod/Hmotnost):", key="form_r3", max_chars=65)
