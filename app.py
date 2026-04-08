@@ -202,16 +202,24 @@ with tab1:
         st.text_input("Název odrůdy:", value=st.session_state.d["name"], key=c_key("name"), placeholder="Např. rajče start")
         curr_name = get_current("name")
         
-        # CHYTRÁ AUTO-KATEGORIZACE PODLE ZADANÉHO SLOVA
+        # --- OPRAVENO: CHYTRÁ AUTO-KATEGORIZACE PODLE ZADANÉHO SLOVA ---
         if curr_name != st.session_state.d.get("last_name_check", ""):
             ln = curr_name.lower()
+            matched_cat = None
             if "rajče" in ln or "rajčata" in ln or "rajcata" in ln:
-                st.session_state.d["cat"] = "Rajčata"
+                matched_cat = "Rajčata"
             elif "paprika" in ln or "papriky" in ln:
-                st.session_state.d["cat"] = "Papriky - Sladké"
+                matched_cat = "Papriky - Sladké"
             elif "bazalka" in ln or "pažitka" in ln or "bylink" in ln or "máta" in ln:
-                st.session_state.d["cat"] = "Bylinky"
+                matched_cat = "Bylinky"
+            
             st.session_state.d["last_name_check"] = curr_name
+            if matched_cat and st.session_state.d.get("cat") != matched_cat:
+                st.session_state.d["cat"] = matched_cat
+                # Aby se roletka s kategoriemi bezpečně překreslila, vygenerujeme nový klíč UI
+                st.session_state.form_key = str(uuid.uuid4())
+                st.rerun()
+        # ----------------------------------------------------------------
         
         folder_check = clean_filename(curr_name)
         if curr_name and os.path.exists(os.path.join(DB_DIR, folder_check)):
@@ -228,15 +236,16 @@ with tab1:
 
         if curr_name:
             st.info("🤖 **Prompt pro AI (Zkopírujte):**")
-            # VYLEPŠENÝ PROMPT (Auto-korekce názvu)
-            ai_prompt = f"Jsi odborník. Hledáme odrůdu: {curr_name}.\n!!! KRITICKÁ PRAVIDLA:\n1. OVĚŘ A OPRAV NÁZEV: Zjisti přesný oficiální název (např. 'rajče start' -> 'Rajče Start F1'). Pokud je to zkomolenina (např. Zlatka místo Zlatava), zeptej se/upozorni.\n2. PIŠ EXTRÉMNĚ STRUČNĚ (max 6 slov na řádek).\n3. PIŠ LAICKY PRO BĚŽNÉHO SPOTŘEBITELE. VYNECH VŠECHNA CIZÍ NEBO ODBORNÁ SLOVA. !!!\nVypiš to přesně takto:\nPŘESNÝ NÁZEV: (doplň oficiální název)\nŘ1: Stanoviště: ... | Zálivka: ...\nŘ2: Spon: ... | Výška: ...\nŘ3: Plod: ... | Hmotnost: ...\nŘ4: Použití: ... | Tip: ..."
+            ai_prompt = f"Jsi odborník. Hledáme odrůdu: {curr_name}.\n!!! KRITICKÁ PRAVIDLA:\n1. OVĚŘ A OPRAV NÁZEV: Zjisti přesný oficiální název (např. 'rajče start' -> 'Rajče Start F1').\n2. PIŠ EXTRÉMNĚ STRUČNĚ (max 6 slov na řádek).\n3. PIŠ LAICKY PRO BĚŽNÉHO SPOTŘEBITELE. VYNECH VŠECHNA CIZÍ NEBO ODBORNÁ SLOVA. !!!\nVypiš to přesně takto:\nPŘESNÝ NÁZEV: (doplň oficiální název)\nŘ1: Stanoviště: ... | Zálivka: ...\nŘ2: Spon: ... | Výška: ...\nŘ3: Plod: ... | Hmotnost: ...\nŘ4: Použití: ... | Tip: ..."
             st.code(ai_prompt, language="text")
 
             q = curr_name.replace(" ", "+")
             st.markdown(f"🔍 [Obrázky Google](https://google.cz/search?tbm=isch&q={q}+fruit+macro+white+background) | [Data Itálie](https://translate.google.com/translate?sl=auto&tl=cs&u=https://www.google.com/search?q={q}+varieta+peso) | [Data Nizozemí](https://translate.google.com/translate?sl=auto&tl=cs&u=https://www.google.com/search?q={q}+ras+kenmerken)")
 
+        # Uložení zvolené kategorie zpět do paměti
         cat_idx = KATEGORIE.index(st.session_state.d["cat"]) if st.session_state.d["cat"] in KATEGORIE else KATEGORIE.index("Ostatní")
-        st.session_state.d["cat"] = st.selectbox("Kategorie pro uložení:", KATEGORIE, index=cat_idx, key=c_key("cat"))
+        selected_cat = st.selectbox("Kategorie pro uložení:", KATEGORIE, index=cat_idx, key=c_key("cat"))
+        st.session_state.d["cat"] = selected_cat
 
         up_file = st.file_uploader("📸 Nahrát staženou fotku:", type=["jpg", "png", "jpeg"], key=c_key("img_up"))
         if up_file:
@@ -260,7 +269,6 @@ with tab1:
             st.session_state.d["last_ai"] = ai_input
             clean_txt = ai_input.replace("**", "").replace("*", "")
             
-            # CHYTRÉ ČTENÍ: Přečte i opravený název!
             for line in clean_txt.split('\n'):
                 if "PŘESNÝ NÁZEV:" in line.upper():
                     possible_name = line.split(":", 1)[1].strip()
