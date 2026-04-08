@@ -7,7 +7,6 @@ import unicodedata
 import json
 import shutil
 import uuid
-import textwrap
 
 # --- 1. KONFIGURACE ---
 DB_DIR = "archiv_cedulek"
@@ -46,38 +45,68 @@ def load_label_data(folder_name):
     img = Image.open(img_path) if os.path.exists(img_path) else None
     return data, img
 
-# CHYTRÁ FUNKCE PRO VYKRESLENÍ PLYNULÉHO TEXTU S BARVAMI
-def draw_flowing_text(d, text_line, start_x, start_y, max_w, f_b, f_r):
-    x = start_x
+# CHYTRÁ FUNKCE S AUTO-ZMENŠOVÁNÍM PÍSMA (Garantuje, že text nezasáhne do ceny)
+def draw_auto_scaled_text(d, lines_text, start_x, start_y, max_w, max_h, font_bold, font_reg):
+    curr_size = 65 # Začínáme s obřím písmem
+    best_size = curr_size
+    
+    # KROK 1: Měření a hledání ideální velikosti písma
+    while curr_size >= 25:
+        f_b = ImageFont.truetype(font_bold, curr_size) if font_bold else ImageFont.load_default()
+        f_r = ImageFont.truetype(font_reg, curr_size) if font_reg else ImageFont.load_default()
+        line_spacing = int(curr_size * 1.3)
+        paragraph_spacing = int(curr_size * 0.4)
+        
+        total_h = 0
+        for line in lines_text:
+            if not line.strip(): continue
+            x = 0
+            words = line.replace('|', ' | ').split()
+            lines_in_p = 1
+            for word in words:
+                f_curr = f_b if word.endswith(':') else f_r
+                w_len = d.textlength(word + " ", font=f_curr)
+                # Pokud slovo přesáhne šířku, odřádkujeme
+                if x + w_len > max_w and x > 0:
+                    x = 0
+                    lines_in_p += 1
+                x += w_len
+            total_h += (lines_in_p * line_spacing) + paragraph_spacing
+            
+        # Pokud se text výškově vejde do prostoru nad cenovkou, našli jsme vítěze
+        if total_h <= max_h:
+            best_size = curr_size
+            break
+        curr_size -= 2 # Pokud se nevejde, zmenšíme písmo a měříme znovu
+        
+    # KROK 2: Finální vykreslení vítěznou velikostí
+    f_b = ImageFont.truetype(font_bold, best_size) if font_bold else ImageFont.load_default()
+    f_r = ImageFont.truetype(font_reg, best_size) if font_reg else ImageFont.load_default()
+    line_spacing = int(best_size * 1.3)
+    paragraph_spacing = int(best_size * 0.4)
+    
     y = start_y
-    line_spacing = 75 # Větší mezera mezi řádky pro lepší čitelnost
-    
-    # Ošetření oddělovače, aby to bylo samostatné slovo
-    text_line = text_line.replace('|', ' | ')
-    words = text_line.split()
-    
-    for word in words:
-        if word.endswith(':'):
-            f_curr = f_b
-            fill_curr = "#004D40" # Tmavě zelená pro klíčová slova
-        elif word == '|':
-            f_curr = f_r
-            fill_curr = "#AAAAAA" # Světle šedá pro oddělovač
-        else:
-            f_curr = f_r
-            fill_curr = "#222222" # Tmavě šedá pro běžný text
-            
-        w_len = d.textlength(word + " ", font=f_curr)
-        
-        # Zalamování, pokud text narazí na okraj
-        if x + w_len > start_x + max_w:
-            x = start_x
-            y += line_spacing
-            
-        d.text((x, y), word, fill=fill_curr, font=f_curr)
-        x += w_len
-        
-    return y + line_spacing + 15 # Vrátí novou Y pozici pro další odstavec
+    for line in lines_text:
+        if not line.strip(): continue
+        x = start_x
+        words = line.replace('|', ' | ').split()
+        for word in words:
+            # Barevné odlišení: klíčová slova zeleně, svislítka šedě, zbytek černě
+            if word.endswith(':'):
+                f_curr = f_b; fill_curr = "#004D40"
+            elif word == '|':
+                f_curr = f_r; fill_curr = "#AAAAAA"
+            else:
+                f_curr = f_r; fill_curr = "#222222"
+                
+            w_len = d.textlength(word + " ", font=f_curr)
+            if x + w_len > start_x + max_w and x > start_x:
+                x = start_x
+                y += line_spacing
+                
+            d.text((x, y), word, fill=fill_curr, font=f_curr)
+            x += w_len
+        y += line_spacing + paragraph_spacing
 
 def draw_label(name, img_plant, lines_text, font_bold, font_reg):
     A4_W, A4_H = 2480, 3508
@@ -104,7 +133,6 @@ def draw_label(name, img_plant, lines_text, font_bold, font_reg):
     y += 150
     
     if img_plant:
-        # Zmenšil jsem lehce fotku, aby bylo víc místa na velký text
         max_th, max_tw = int(L_H * 0.33), L_W - 240
         w, h = img_plant.size
         ratio = min(max_tw/w, max_th/h)
@@ -118,14 +146,9 @@ def draw_label(name, img_plant, lines_text, font_bold, font_reg):
         lbl.paste(resized_img, (img_x, img_y))
         y += new_size[1] + 80
         
-    # Vykreslování textu s novým obřím písmem (55) na celou šířku
-    f_b = ImageFont.truetype(font_bold, 55) if font_bold else ImageFont.load_default()
-    f_r = ImageFont.truetype(font_reg, 55) if font_reg else ImageFont.load_default()
-    
-    for line in lines_text:
-        if line.strip():
-            # Aplikuje chytrou funkci, která text zalomí a obarví
-            y = draw_flowing_text(d, line, 100, y, L_W - 200, f_b, f_r)
+    # MAXIMÁLNÍ VÝŠKA PRO TEXT (od spodku fotky po začátek cenovky s rezervou)
+    max_text_height = (L_H - 240) - y 
+    draw_auto_scaled_text(d, lines_text, 100, y, L_W - 200, max_text_height, font_bold, font_reg)
         
     # CENA
     bx_w, bx_h, bx_y = 420, 160, L_H - 220
@@ -135,7 +158,7 @@ def draw_label(name, img_plant, lines_text, font_bold, font_reg):
     d.rectangle([0, 0, L_W-1, L_H-1], outline="#EEEEEE", width=3)
     return lbl
 
-# --- 3. EXTRÉMNĚ BEZPEČNÁ PAMĚŤ (Nepadající architektura) ---
+# --- 3. EXTRÉMNĚ BEZPEČNÁ PAMĚŤ ---
 if 'form_key' not in st.session_state: st.session_state.form_key = str(uuid.uuid4())
 if 'd' not in st.session_state:
     st.session_state.d = {
@@ -157,8 +180,8 @@ st.title("🌿 Farmářský Systém: Generátor Cedulek")
 
 # Oznámení o úspěšném načtení
 if st.session_state.show_load_msg:
-    st.success("✅ Cedulka byla úspěšně načtena z archivu a je připravena k úpravám!")
-    st.session_state.show_load_msg = False # Hned vypneme, ať nesvítí pořád
+    st.success("✅ Cedulka úspěšně načtena! Vše je v Editoru připraveno k tisku nebo úpravám.")
+    st.session_state.show_load_msg = False # Zobrazí se jen jednou
 
 tab1, tab2 = st.tabs(["🖌️ Editor & Tisk", "🗃️ Sklad / Archiv"])
 
@@ -272,7 +295,6 @@ with tab1:
             f_b, f_r = get_czech_font("Bold"), get_czech_font("Regular")
             lines = [get_current("r1"), get_current("r2"), get_current("r3"), get_current("r4")]
             
-            # Odstranění nevyplněných řádků z náhledu
             valid_lines = [r for r in lines if r.strip() and not r.endswith(": | ")]
             if not valid_lines: valid_lines = lines
 
@@ -315,7 +337,7 @@ with tab2:
                     c2.markdown(f"**{info.get('name', 'Neznámý')}**")
                     c2.caption(f"{info.get('r1', '')} \n{info.get('r2', '')}")
 
-                    # TLAČÍTKO PRO NAČTENÍ (Bezpečné vyvolání hlášky a reloadu)
+                    # Tlačítko pro načtení
                     if c3.button("✏️ Načíst do editoru", key=f"load_{f_name}"):
                         loaded_d, loaded_img = load_label_data(f_name)
                         st.session_state.d.update(loaded_d)
@@ -323,7 +345,7 @@ with tab2:
                         st.session_state.d["img"] = loaded_img
                         st.session_state.d["last_ai"] = ""
                         st.session_state.form_key = str(uuid.uuid4())
-                        st.session_state.show_load_msg = True # Aktivuje hlášku nahoře!
+                        st.session_state.show_load_msg = True # Aktivuje hlášku!
                         st.rerun()
 
                     if c3.button("🗑️ Smazat", key=f"del_{f_name}", type="primary"):
