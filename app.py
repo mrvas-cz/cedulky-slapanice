@@ -24,7 +24,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 2. FUNKCE PRO TEXT A GRAFIKU ---
+# --- 2. GRAFICKÉ FUNKCE A ZABEZPEČENÍ ---
 @st.cache_resource
 def get_czech_font(font_type="Bold"):
     file_name = f"Roboto-{font_type}.ttf"
@@ -52,6 +52,7 @@ def draw_label(name, img_plant, lines_text, font_bold, font_reg):
     lbl = Image.new('RGB', (L_W, L_H), 'white')
     d = ImageDraw.Draw(lbl)
     
+    # LOGO
     y = 60
     try:
         logo = Image.open("logo txt farma.JPG").convert("RGBA")
@@ -61,12 +62,19 @@ def draw_label(name, img_plant, lines_text, font_bold, font_reg):
         y += logo.height + 40
     except: y += 100
     
-    f_t = ImageFont.truetype(font_bold, 110) if font_bold else ImageFont.load_default()
+    # DYNAMICKÝ NÁZEV (Zmenší se, pokud je moc dlouhý, aby nepřetekl)
+    title_size = 110
+    f_t = ImageFont.truetype(font_bold, title_size) if font_bold else ImageFont.load_default()
+    while font_bold and d.textlength(name.upper(), font=f_t) > (L_W - 80) and title_size > 50:
+        title_size -= 5
+        f_t = ImageFont.truetype(font_bold, title_size)
+        
     d.text((L_W//2, y), name.upper(), fill="#004D40", anchor="mt", font=f_t)
     y += 160
     
+    # FOTKA (Pasparta)
     if img_plant:
-        max_th, max_tw = int(L_H * 0.38), L_W - 240
+        max_th, max_tw = int(L_H * 0.35), L_W - 240 # Zmenšeno na 0.35 pro více místa na text
         w, h = img_plant.size
         ratio = min(max_tw/w, max_th/h)
         new_size = (int(w*ratio), int(h*ratio))
@@ -79,25 +87,58 @@ def draw_label(name, img_plant, lines_text, font_bold, font_reg):
         lbl.paste(resized_img, (img_x, img_y))
         y += new_size[1] + 90
         
+    # TEXTY (DVOUSLOUPCOVÝ DESIGN S BEZPEČNÝM ZALAMOVÁNÍM)
     f_b = ImageFont.truetype(font_bold, 40) if font_bold else ImageFont.load_default()
     f_r = ImageFont.truetype(font_reg, 40) if font_reg else ImageFont.load_default()
     
     for line in lines_text:
         parts = line.split('|', 1)
-        x_positions = [100, int(L_W * 0.52)]
+        max_y_this_line = y
+        
         for i, part in enumerate(parts):
             part = part.strip()
             if not part: continue
-            curr_x = x_positions[i]
+            
+            curr_x = 100 if i == 0 else int(L_W * 0.52)
+            curr_y = y
+            max_col_w = int(L_W * 0.45) - 20 # Maximální šířka jednoho sloupce
+            
             if ":" in part:
                 key, val = part.split(':', 1)
-                d.text((curr_x, y), key.strip() + ":", fill="#004D40", font=f_b)
-                curr_x += d.textlength(key.strip() + ": ", font=f_b)
-                d.text((curr_x, y), val.strip(), fill="#333333", font=f_r)
+                key_str = key.strip() + ":"
+                val_str = val.strip()
+                
+                # Tučný klíč
+                d.text((curr_x, curr_y), key_str, fill="#004D40", font=f_b)
+                key_width = d.textlength(key_str + " ", font=f_b)
+                
+                # Zalamování hodnoty
+                val_x = curr_x + key_width
+                val_max_w = max_col_w - key_width
+                
+                avg_cw = d.textlength("a", font=f_r) if font_reg else 10
+                cpl = max(1, int(val_max_w / avg_cw))
+                wrapped_val = textwrap.wrap(val_str, width=cpl)
+                
+                for w_line in wrapped_val:
+                    d.text((val_x, curr_y), w_line, fill="#333333", font=f_r)
+                    curr_y += 50
             else:
-                d.text((curr_x, y), part, fill="#333333", font=f_r)
-        y += 85
+                # Zalamování celého textu (bez dvojtečky)
+                avg_cw = d.textlength("a", font=f_r) if font_reg else 10
+                cpl = max(1, int(max_col_w / avg_cw))
+                wrapped_part = textwrap.wrap(part, width=cpl)
+                
+                for w_line in wrapped_part:
+                    d.text((curr_x, curr_y), w_line, fill="#333333", font=f_r)
+                    curr_y += 50
+                    
+            if curr_y > max_y_this_line:
+                max_y_this_line = curr_y
+                
+        y = max_y_this_line + 30 # Odsazení pro další řádek
         
+    # CENA
     bx_w, bx_h, bx_y = 420, 160, L_H - 220
     d.rectangle([(L_W-bx_w)//2, bx_y, (L_W+bx_w)//2, bx_y+bx_h], outline="#004D40", width=12)
     f_p = ImageFont.truetype(font_bold, 100) if font_bold else ImageFont.load_default()
@@ -105,24 +146,17 @@ def draw_label(name, img_plant, lines_text, font_bold, font_reg):
     d.rectangle([0, 0, L_W-1, L_H-1], outline="#EEEEEE", width=3)
     return lbl
 
-# --- 3. NEPRŮSTŘELNÁ ZÁCHRANNÁ BRZDA PAMĚTI ---
-# Tato funkce zajistí, že aplikace nikdy nespadne, ani když uživatel zmáčkne "Reset app"
-def ensure_state():
-    if 'c_data' not in st.session_state:
-        st.session_state.c_data = {
-            "name": "", "cat": "Ostatní", "img": None,
-            "r1": "Stanoviště: | Zálivka: ",
-            "r2": "Spon: | Výška: ",
-            "r3": "Plod: | Hmotnost: ",
-            "r4": "Použití: | Tip: "
-        }
-    if 'c_up_key' not in st.session_state: 
-        st.session_state.c_up_key = str(uuid.uuid4())
-    if 'last_ai_text' not in st.session_state: 
-        st.session_state.last_ai_text = ""
-
-# Zavoláme záchrannou brzdu hned na začátku!
-ensure_state()
+# --- 3. CENTRÁLNÍ BEZPEČNÁ PAMĚŤ ---
+if 'c_data' not in st.session_state:
+    st.session_state.c_data = {
+        "name": "", "cat": "Ostatní", "img": None,
+        "r1": "Stanoviště: | Zálivka: ",
+        "r2": "Spon: | Výška: ",
+        "r3": "Plod: | Hmotnost: ",
+        "r4": "Použití: | Tip: "
+    }
+if 'c_up_key' not in st.session_state: st.session_state.c_up_key = str(uuid.uuid4())
+if 'last_ai_text' not in st.session_state: st.session_state.last_ai_text = ""
 
 # --- 4. APLIKACE A UI ---
 st.title("🌿 Farmářský Systém: Generátor Cedulek")
@@ -256,7 +290,6 @@ with tab2:
             if os.path.exists(path):
                 with open(path, "r", encoding="utf-8") as file:
                     info = json.load(file)
-                    # Zpětná kompatibilita - chybějící kategorie se hodí do "Ostatní"
                     if info.get("cat", "Ostatní") == kat: kat_items.append((f, info))
 
         if kat_items:
