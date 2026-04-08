@@ -38,6 +38,13 @@ def clean_filename(text):
     if not text: return "BEZ_NAZVU"
     return unicodedata.normalize('NFKD', text).encode('ASCII', 'ignore').decode('utf-8').replace(" ", "_").upper()
 
+def load_label_data(folder_name):
+    path = os.path.join(DB_DIR, folder_name)
+    with open(os.path.join(path, "data.json"), "r", encoding="utf-8") as f: data = json.load(f)
+    img_path = os.path.join(path, "photo.jpg")
+    img = Image.open(img_path) if os.path.exists(img_path) else None
+    return data, img
+
 def draw_label(name, img_plant, lines_text, font_bold, font_reg):
     A4_W, A4_H = 2480, 3508
     L_W, L_H = A4_W // 2, A4_H // 2
@@ -70,7 +77,7 @@ def draw_label(name, img_plant, lines_text, font_bold, font_reg):
         img_x = (L_W - new_size[0]) // 2
         img_y = y
         
-        # Vykreslení rámečku s odsazením (pasparta)
+        # Rámeček fotky (pasparta)
         pad = 12
         d.rectangle([img_x - pad, img_y - pad, img_x + new_size[0] + pad, img_y + new_size[1] + pad], outline="#004D40", width=4)
         lbl.paste(resized_img, (img_x, img_y))
@@ -82,32 +89,23 @@ def draw_label(name, img_plant, lines_text, font_bold, font_reg):
     f_r = ImageFont.truetype(font_reg, 40) if font_reg else ImageFont.load_default()
     
     for line in lines_text:
-        # Rozdělení na levý a pravý sloupec pomocí svislítka "|"
         parts = line.split('|', 1)
-        x_positions = [100, int(L_W * 0.52)] # X souřadnice pro levý a pravý sloupec
+        x_positions = [100, int(L_W * 0.52)]
         
         for i, part in enumerate(parts):
             part = part.strip()
             if not part: continue
-            
             curr_x = x_positions[i]
             
-            # Pokud část obsahuje dvojtečku, rozdělíme na Tučný klíč a Normální hodnotu
             if ":" in part:
                 key, val = part.split(':', 1)
-                
-                # Vykreslíme např. "Stanoviště:" tučně a zeleně
                 d.text((curr_x, y), key.strip() + ":", fill="#004D40", font=f_b)
-                # Posuneme X souřadnici o šířku nakresleného klíče + mezeru
                 curr_x += d.textlength(key.strip() + ": ", font=f_b)
-                
-                # Vykreslíme hodnotu klasicky
                 d.text((curr_x, y), val.strip(), fill="#333333", font=f_r)
             else:
-                # Pokud tam dvojtečka není (např. obyčejná věta), vykreslíme normálně
                 d.text((curr_x, y), part, fill="#333333", font=f_r)
         
-        y += 85 # Odsazení na další řádek
+        y += 85
     
     # CENA
     bx_w, bx_h, bx_y = 420, 160, L_H - 220
@@ -124,6 +122,7 @@ if 'form_r2' not in st.session_state: st.session_state.form_r2 = "Spon: | Výšk
 if 'form_r3' not in st.session_state: st.session_state.form_r3 = "Plod: | Hmotnost: "
 if 'form_r4' not in st.session_state: st.session_state.form_r4 = "Použití: | Tip: "
 if 'form_img' not in st.session_state: st.session_state.form_img = None
+if 'form_cat' not in st.session_state: st.session_state.form_cat = "Ostatní"
 if 'ai_input_text' not in st.session_state: st.session_state.ai_input_text = ""
 if 'uploader_key' not in st.session_state: st.session_state.uploader_key = str(uuid.uuid4())
 
@@ -143,6 +142,7 @@ def reset_form():
     st.session_state.form_r2 = "Spon: | Výška: "
     st.session_state.form_r3 = "Plod: | Hmotnost: "
     st.session_state.form_r4 = "Použití: | Tip: "
+    st.session_state.form_cat = "Ostatní"
     st.session_state.form_img = None
     st.session_state.ai_input_text = ""
     st.session_state.uploader_key = str(uuid.uuid4())
@@ -159,8 +159,19 @@ with tab1:
         current_name = st.text_input("Název odrůdy:", key="form_name")
         folder_check = clean_filename(current_name)
         
+        # OPRAVA 1: Tlačítko pro načtení přímo z první záložky
         if current_name and os.path.exists(os.path.join(DB_DIR, folder_check)):
             st.warning("⚠️ Odrůda již v archivu existuje!")
+            if st.button("📂 Načíst existující data", type="primary"):
+                d, img = load_label_data(folder_check)
+                st.session_state.form_name = d.get('name', '')
+                st.session_state.form_r1 = d.get('r1', '')[:65]
+                st.session_state.form_r2 = d.get('r2', '')[:65]
+                st.session_state.form_r3 = d.get('r3', '')[:65]
+                st.session_state.form_r4 = d.get('r4', '')[:65]
+                st.session_state.form_cat = d.get('cat', 'Ostatní')
+                st.session_state.form_img = img
+                st.rerun()
         
         if current_name:
             st.info("🤖 **Prompt pro AI (Zkopírujte):**")
@@ -178,7 +189,9 @@ Vypiš to přesně takto:
             q = current_name.replace(" ", "+")
             st.markdown(f"🔍 [Obrázky Google](https://google.cz/search?tbm=isch&q={q}+fruit+macro+white+background) | [Data Itálie](https://translate.google.com/translate?sl=auto&tl=cs&u=https://www.google.com/search?q={q}+varieta+peso) | [Data Nizozemí](https://translate.google.com/translate?sl=auto&tl=cs&u=https://www.google.com/search?q={q}+ras+kenmerken)")
 
-        selected_cat = st.selectbox("Kategorie pro uložení:", KATEGORIE)
+        # Zabezpečení správného indexu kategorie
+        cat_index = KATEGORIE.index(st.session_state.form_cat) if st.session_state.form_cat in KATEGORIE else KATEGORIE.index("Ostatní")
+        selected_cat = st.selectbox("Kategorie pro uložení:", KATEGORIE, index=cat_index)
         
         uploaded_file = st.file_uploader("📸 Nahrát staženou fotku:", type=["jpg", "png", "jpeg"], key=st.session_state.uploader_key)
         if uploaded_file:
@@ -271,14 +284,17 @@ with tab2:
                     c2.markdown(f"**{info.get('name', 'Neznámý')}**")
                     c2.caption(f"{info.get('r1', '')} \n{info.get('r2', '')}")
                     
+                    # OPRAVA 2: Tlačítko pro načtení z archivu s rerunem!
                     if c3.button("✏️ Načíst do editoru", key=f"load_{f_name}"):
-                        st.session_state.form_name = info.get('name', '')
-                        st.session_state.form_r1 = info.get('r1', '')[:65]
-                        st.session_state.form_r2 = info.get('r2', '')[:65]
-                        st.session_state.form_r3 = info.get('r3', '')[:65]
-                        st.session_state.form_r4 = info.get('r4', '')[:65]
-                        st.session_state.form_img = Image.open(img_p) if os.path.exists(img_p) else None
-                        st.success("Načteno! Přepněte se do první záložky.")
+                        d, img = load_label_data(f_name)
+                        st.session_state.form_name = d.get('name', '')
+                        st.session_state.form_r1 = d.get('r1', '')[:65]
+                        st.session_state.form_r2 = d.get('r2', '')[:65]
+                        st.session_state.form_r3 = d.get('r3', '')[:65]
+                        st.session_state.form_r4 = d.get('r4', '')[:65]
+                        st.session_state.form_cat = d.get('cat', 'Ostatní')
+                        st.session_state.form_img = img
+                        st.rerun()  # TOTO CHYBĚLO! Teď to obrazovku okamžitě přepíše.
                         
                     if c3.button("🗑️ Smazat", key=f"del_{f_name}", type="primary"):
                         shutil.rmtree(os.path.join(DB_DIR, f_name))
