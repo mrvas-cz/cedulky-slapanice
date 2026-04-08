@@ -24,7 +24,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 2. GRAFICKÉ FUNKCE A ZABEZPEČENÍ ---
+# --- 2. GRAFICKÉ FUNKCE A CHYTRÝ TEXT ---
 @st.cache_resource
 def get_czech_font(font_type="Bold"):
     file_name = f"Roboto-{font_type}.ttf"
@@ -45,6 +45,39 @@ def load_label_data(folder_name):
     img_path = os.path.join(path, "photo.jpg")
     img = Image.open(img_path) if os.path.exists(img_path) else None
     return data, img
+
+# CHYTRÁ FUNKCE PRO VYKRESLENÍ PLYNULÉHO TEXTU S BARVAMI
+def draw_flowing_text(d, text_line, start_x, start_y, max_w, f_b, f_r):
+    x = start_x
+    y = start_y
+    line_spacing = 75 # Větší mezera mezi řádky pro lepší čitelnost
+    
+    # Ošetření oddělovače, aby to bylo samostatné slovo
+    text_line = text_line.replace('|', ' | ')
+    words = text_line.split()
+    
+    for word in words:
+        if word.endswith(':'):
+            f_curr = f_b
+            fill_curr = "#004D40" # Tmavě zelená pro klíčová slova
+        elif word == '|':
+            f_curr = f_r
+            fill_curr = "#AAAAAA" # Světle šedá pro oddělovač
+        else:
+            f_curr = f_r
+            fill_curr = "#222222" # Tmavě šedá pro běžný text
+            
+        w_len = d.textlength(word + " ", font=f_curr)
+        
+        # Zalamování, pokud text narazí na okraj
+        if x + w_len > start_x + max_w:
+            x = start_x
+            y += line_spacing
+            
+        d.text((x, y), word, fill=fill_curr, font=f_curr)
+        x += w_len
+        
+    return y + line_spacing + 15 # Vrátí novou Y pozici pro další odstavec
 
 def draw_label(name, img_plant, lines_text, font_bold, font_reg):
     A4_W, A4_H = 2480, 3508
@@ -68,10 +101,11 @@ def draw_label(name, img_plant, lines_text, font_bold, font_reg):
         f_t = ImageFont.truetype(font_bold, title_size)
         
     d.text((L_W//2, y), name.upper(), fill="#004D40", anchor="mt", font=f_t)
-    y += 160
+    y += 150
     
     if img_plant:
-        max_th, max_tw = int(L_H * 0.35), L_W - 240
+        # Zmenšil jsem lehce fotku, aby bylo víc místa na velký text
+        max_th, max_tw = int(L_H * 0.33), L_W - 240
         w, h = img_plant.size
         ratio = min(max_tw/w, max_th/h)
         new_size = (int(w*ratio), int(h*ratio))
@@ -82,50 +116,18 @@ def draw_label(name, img_plant, lines_text, font_bold, font_reg):
         pad = 12
         d.rectangle([img_x - pad, img_y - pad, img_x + new_size[0] + pad, img_y + new_size[1] + pad], outline="#004D40", width=4)
         lbl.paste(resized_img, (img_x, img_y))
-        y += new_size[1] + 90
+        y += new_size[1] + 80
         
-    f_b = ImageFont.truetype(font_bold, 40) if font_bold else ImageFont.load_default()
-    f_r = ImageFont.truetype(font_reg, 40) if font_reg else ImageFont.load_default()
+    # Vykreslování textu s novým obřím písmem (55) na celou šířku
+    f_b = ImageFont.truetype(font_bold, 55) if font_bold else ImageFont.load_default()
+    f_r = ImageFont.truetype(font_reg, 55) if font_reg else ImageFont.load_default()
     
     for line in lines_text:
-        parts = line.split('|', 1)
-        max_y_this_line = y
+        if line.strip():
+            # Aplikuje chytrou funkci, která text zalomí a obarví
+            y = draw_flowing_text(d, line, 100, y, L_W - 200, f_b, f_r)
         
-        for i, part in enumerate(parts):
-            part = part.strip()
-            if not part: continue
-            
-            curr_x = 100 if i == 0 else int(L_W * 0.52)
-            curr_y = y
-            max_col_w = int(L_W * 0.45) - 20
-            
-            if ":" in part:
-                key, val = part.split(':', 1)
-                key_str = key.strip() + ":"
-                val_str = val.strip()
-                
-                d.text((curr_x, curr_y), key_str, fill="#004D40", font=f_b)
-                key_width = d.textlength(key_str + " ", font=f_b)
-                val_x = curr_x + key_width
-                val_max_w = max_col_w - key_width
-                
-                avg_cw = d.textlength("a", font=f_r) if font_reg else 10
-                cpl = max(1, int(val_max_w / avg_cw))
-                wrapped_val = textwrap.wrap(val_str, width=cpl)
-                for w_line in wrapped_val:
-                    d.text((val_x, curr_y), w_line, fill="#333333", font=f_r)
-                    curr_y += 50
-            else:
-                avg_cw = d.textlength("a", font=f_r) if font_reg else 10
-                cpl = max(1, int(max_col_w / avg_cw))
-                wrapped_part = textwrap.wrap(part, width=cpl)
-                for w_line in wrapped_part:
-                    d.text((curr_x, curr_y), w_line, fill="#333333", font=f_r)
-                    curr_y += 50
-                    
-            if curr_y > max_y_this_line: max_y_this_line = curr_y
-        y = max_y_this_line + 30
-        
+    # CENA
     bx_w, bx_h, bx_y = 420, 160, L_H - 220
     d.rectangle([(L_W-bx_w)//2, bx_y, (L_W+bx_w)//2, bx_y+bx_h], outline="#004D40", width=12)
     f_p = ImageFont.truetype(font_bold, 100) if font_bold else ImageFont.load_default()
@@ -133,8 +135,7 @@ def draw_label(name, img_plant, lines_text, font_bold, font_reg):
     d.rectangle([0, 0, L_W-1, L_H-1], outline="#EEEEEE", width=3)
     return lbl
 
-# --- 3. EXTRÉMNĚ BEZPEČNÁ PAMĚŤ (FORM ID PATTERN) ---
-# Toto garantuje, že aplikace NIKDY nevyhodí StreamlitAPIException
+# --- 3. EXTRÉMNĚ BEZPEČNÁ PAMĚŤ (Nepadající architektura) ---
 if 'form_key' not in st.session_state: st.session_state.form_key = str(uuid.uuid4())
 if 'd' not in st.session_state:
     st.session_state.d = {
@@ -142,16 +143,23 @@ if 'd' not in st.session_state:
         "r1": "Stanoviště: | Zálivka: ", "r2": "Spon: | Výška: ",
         "r3": "Plod: | Hmotnost: ", "r4": "Použití: | Tip: ", "last_ai": ""
     }
+# Proměnná pro zobrazení úspěšné hlášky
+if 'show_load_msg' not in st.session_state: st.session_state.show_load_msg = False
 
 def c_key(field):
     return f"{field}_{st.session_state.form_key}"
 
 def get_current(field):
-    # Přečte aktuální hodnotu z obrazovky, nebo vrátí uloženou
     return st.session_state.get(c_key(field), st.session_state.d.get(field, ""))
 
 # --- 4. APLIKACE A UI ---
 st.title("🌿 Farmářský Systém: Generátor Cedulek")
+
+# Oznámení o úspěšném načtení
+if st.session_state.show_load_msg:
+    st.success("✅ Cedulka byla úspěšně načtena z archivu a je připravena k úpravám!")
+    st.session_state.show_load_msg = False # Hned vypneme, ať nesvítí pořád
+
 tab1, tab2 = st.tabs(["🖌️ Editor & Tisk", "🗃️ Sklad / Archiv"])
 
 with tab1:
@@ -167,13 +175,13 @@ with tab1:
         if curr_name and os.path.exists(os.path.join(DB_DIR, folder_check)):
             st.warning("⚠️ Odrůda již v archivu existuje!")
             if st.button("📂 Načíst existující data z archivu", type="primary"):
-                # NAČTENÍ: Změníme data a VYTVOŘÍME NOVÝ FORMULÁŘ (nový form_key)
                 loaded_d, loaded_img = load_label_data(folder_check)
                 st.session_state.d.update(loaded_d)
                 if st.session_state.d.get("cat") not in KATEGORIE: st.session_state.d["cat"] = "Ostatní"
                 st.session_state.d["img"] = loaded_img
                 st.session_state.d["last_ai"] = ""
-                st.session_state.form_key = str(uuid.uuid4()) # Měníme UI ID!
+                st.session_state.form_key = str(uuid.uuid4())
+                st.session_state.show_load_msg = True
                 st.rerun()
 
         if curr_name:
@@ -198,9 +206,7 @@ with tab1:
         st.header("2. Obsah Cedulky")
 
         ai_input = st.text_area("Vložit výsledek z AI:", height=120, key=c_key("ai"))
-        # Automatické rozsekání textu z AI
         if ai_input and ai_input != st.session_state.d.get("last_ai"):
-            # Uložíme si, co uživatel napsal manuálně, aby to nezmizelo
             st.session_state.d["name"] = get_current("name")
             st.session_state.d["cat"] = get_current("cat")
             st.session_state.d["r1"] = get_current("r1")
@@ -216,7 +222,6 @@ with tab1:
                 elif "Ř3:" in line: st.session_state.d["r3"] = line.split("Ř3:")[1].strip()[:65]
                 elif "Ř4:" in line: st.session_state.d["r4"] = line.split("Ř4:")[1].strip()[:65]
             
-            # Vytvoříme nový formulář, který si cucne tato nová data
             st.session_state.form_key = str(uuid.uuid4())
             st.rerun()
 
@@ -266,6 +271,8 @@ with tab1:
         with st.spinner("Generuji arch..."):
             f_b, f_r = get_czech_font("Bold"), get_czech_font("Regular")
             lines = [get_current("r1"), get_current("r2"), get_current("r3"), get_current("r4")]
+            
+            # Odstranění nevyplněných řádků z náhledu
             valid_lines = [r for r in lines if r.strip() and not r.endswith(": | ")]
             if not valid_lines: valid_lines = lines
 
@@ -308,14 +315,15 @@ with tab2:
                     c2.markdown(f"**{info.get('name', 'Neznámý')}**")
                     c2.caption(f"{info.get('r1', '')} \n{info.get('r2', '')}")
 
-                    # TLAČÍTKO PRO NAČTENÍ - Nyní naprosto bezpečné!
+                    # TLAČÍTKO PRO NAČTENÍ (Bezpečné vyvolání hlášky a reloadu)
                     if c3.button("✏️ Načíst do editoru", key=f"load_{f_name}"):
                         loaded_d, loaded_img = load_label_data(f_name)
                         st.session_state.d.update(loaded_d)
                         if st.session_state.d.get("cat") not in KATEGORIE: st.session_state.d["cat"] = "Ostatní"
                         st.session_state.d["img"] = loaded_img
                         st.session_state.d["last_ai"] = ""
-                        st.session_state.form_key = str(uuid.uuid4()) # Vynutí bezchybné překreslení!
+                        st.session_state.form_key = str(uuid.uuid4())
+                        st.session_state.show_load_msg = True # Aktivuje hlášku nahoře!
                         st.rerun()
 
                     if c3.button("🗑️ Smazat", key=f"del_{f_name}", type="primary"):
