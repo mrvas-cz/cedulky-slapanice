@@ -4,7 +4,6 @@ import io
 import os
 import urllib.request
 import unicodedata
-import textwrap
 import json
 import shutil
 import uuid
@@ -39,35 +38,13 @@ def clean_filename(text):
     if not text: return "BEZ_NAZVU"
     return unicodedata.normalize('NFKD', text).encode('ASCII', 'ignore').decode('utf-8').replace(" ", "_").upper()
 
-def draw_text_box(draw, text, pos, max_width, max_height, font_path, start_font_size):
-    current_font_size = start_font_size
-    lines = []
-    while current_font_size > 22:
-        font = ImageFont.truetype(font_path, current_font_size) if font_path else ImageFont.load_default()
-        lines = []
-        raw_lines = text.split('\n')
-        for raw_line in raw_lines:
-            if not raw_line.strip(): continue
-            avg_char_width = draw.textlength("a", font=font) if font_path else 10
-            chars_per_line = max(1, int(max_width / avg_char_width))
-            wrapped = textwrap.wrap(raw_line, width=chars_per_line)
-            for i, w_line in enumerate(wrapped):
-                lines.append(f"• {w_line}" if i == 0 else f"  {w_line}")
-        if len(lines) * (current_font_size * 1.3) <= max_height: break
-        current_font_size -= 2
-    
-    font = ImageFont.truetype(font_path, current_font_size) if font_path else ImageFont.load_default()
-    y_text = pos[1]
-    for line in lines:
-        draw.text((pos[0], y_text), line, fill="#333333", font=font)
-        y_text += current_font_size * 1.3
-
 def draw_label(name, img_plant, lines_text, font_bold, font_reg):
     A4_W, A4_H = 2480, 3508
     L_W, L_H = A4_W // 2, A4_H // 2
     lbl = Image.new('RGB', (L_W, L_H), 'white')
     d = ImageDraw.Draw(lbl)
     
+    # LOGO
     y = 60
     try:
         logo = Image.open("logo txt farma.JPG").convert("RGBA")
@@ -77,20 +54,62 @@ def draw_label(name, img_plant, lines_text, font_bold, font_reg):
         y += logo.height + 40
     except: y += 100
     
-    f_t = ImageFont.truetype(font_bold, 115) if font_bold else ImageFont.load_default()
+    # NÁZEV
+    f_t = ImageFont.truetype(font_bold, 110) if font_bold else ImageFont.load_default()
     d.text((L_W//2, y), name.upper(), fill="#004D40", anchor="mt", font=f_t)
-    y += 180
+    y += 160
     
+    # FOTKA S ELEGANTNÍM RÁMEČKEM
     if img_plant:
-        max_th, max_tw = int(L_H * 0.38), L_W - 200
+        max_th, max_tw = int(L_H * 0.38), L_W - 240
         w, h = img_plant.size
         ratio = min(max_tw/w, max_th/h)
         new_size = (int(w*ratio), int(h*ratio))
         resized_img = img_plant.resize(new_size, Image.Resampling.LANCZOS)
-        lbl.paste(resized_img, ((L_W - new_size[0]) // 2, y))
-        y += new_size[1] + 60
+        
+        img_x = (L_W - new_size[0]) // 2
+        img_y = y
+        
+        # Vykreslení rámečku s odsazením (pasparta)
+        pad = 12
+        d.rectangle([img_x - pad, img_y - pad, img_x + new_size[0] + pad, img_y + new_size[1] + pad], outline="#004D40", width=4)
+        lbl.paste(resized_img, (img_x, img_y))
+        
+        y += new_size[1] + 90
     
-    draw_text_box(d, "\n".join(lines_text), (100, y), L_W - 200, (L_H-250)-y, font_reg, 48)
+    # TEXTY (DVOUSLOUPCOVÝ DESIGN & TUČNÉ KLÍČE)
+    f_b = ImageFont.truetype(font_bold, 40) if font_bold else ImageFont.load_default()
+    f_r = ImageFont.truetype(font_reg, 40) if font_reg else ImageFont.load_default()
+    
+    for line in lines_text:
+        # Rozdělení na levý a pravý sloupec pomocí svislítka "|"
+        parts = line.split('|', 1)
+        x_positions = [100, int(L_W * 0.52)] # X souřadnice pro levý a pravý sloupec
+        
+        for i, part in enumerate(parts):
+            part = part.strip()
+            if not part: continue
+            
+            curr_x = x_positions[i]
+            
+            # Pokud část obsahuje dvojtečku, rozdělíme na Tučný klíč a Normální hodnotu
+            if ":" in part:
+                key, val = part.split(':', 1)
+                
+                # Vykreslíme např. "Stanoviště:" tučně a zeleně
+                d.text((curr_x, y), key.strip() + ":", fill="#004D40", font=f_b)
+                # Posuneme X souřadnici o šířku nakresleného klíče + mezeru
+                curr_x += d.textlength(key.strip() + ": ", font=f_b)
+                
+                # Vykreslíme hodnotu klasicky
+                d.text((curr_x, y), val.strip(), fill="#333333", font=f_r)
+            else:
+                # Pokud tam dvojtečka není (např. obyčejná věta), vykreslíme normálně
+                d.text((curr_x, y), part, fill="#333333", font=f_r)
+        
+        y += 85 # Odsazení na další řádek
+    
+    # CENA
     bx_w, bx_h, bx_y = 420, 160, L_H - 220
     d.rectangle([(L_W-bx_w)//2, bx_y, (L_W+bx_w)//2, bx_y+bx_h], outline="#004D40", width=12)
     f_p = ImageFont.truetype(font_bold, 100) if font_bold else ImageFont.load_default()
@@ -106,7 +125,7 @@ if 'form_r3' not in st.session_state: st.session_state.form_r3 = "Plod: | Hmotno
 if 'form_r4' not in st.session_state: st.session_state.form_r4 = "Použití: | Tip: "
 if 'form_img' not in st.session_state: st.session_state.form_img = None
 if 'ai_input_text' not in st.session_state: st.session_state.ai_input_text = ""
-if 'uploader_key' not in st.session_state: st.session_state.uploader_key = str(uuid.uuid4()) # Trik na fotku
+if 'uploader_key' not in st.session_state: st.session_state.uploader_key = str(uuid.uuid4())
 
 def process_ai_input():
     text = st.session_state.ai_input_text
@@ -126,7 +145,7 @@ def reset_form():
     st.session_state.form_r4 = "Použití: | Tip: "
     st.session_state.form_img = None
     st.session_state.ai_input_text = ""
-    st.session_state.uploader_key = str(uuid.uuid4()) # Obnovení klíče pro smazání fotky z uploaderu
+    st.session_state.uploader_key = str(uuid.uuid4())
 
 # --- 4. APLIKACE A UI ---
 st.title("🌿 Farmářský Systém: Generátor Cedulek")
@@ -146,8 +165,10 @@ with tab1:
         if current_name:
             st.info("🤖 **Prompt pro AI (Zkopírujte):**")
             ai_prompt = f"""Jsi odborník. Najdi o odrůdě {current_name} tyto údaje.
-!!! KRITICKÉ PRAVIDLO: PIŠ EXTRÉMNĚ STRUČNĚ, POUZE HESLA. KAŽDÝ ŘÁDEK SMÍ MÍT MAXIMÁLNĚ 6 AŽ 7 SLOV CELKEM !!!
-Vypiš je přesně takto:
+!!! KRITICKÁ PRAVIDLA:
+1. PIŠ EXTRÉMNĚ STRUČNĚ (max 6 slov na řádek).
+2. PIŠ LAICKY PRO BĚŽNÉHO SPOTŘEBITELE. VYNECH VŠECHNA CIZÍ NEBO ODBORNÁ SLOVA (jako habitus, rezistence, atd.). Používej jen jednoduchou češtinu. !!!
+Vypiš to přesně takto:
 Ř1: Stanoviště: ... | Zálivka: ...
 Ř2: Spon: ... | Výška: ...
 Ř3: Plod: ... | Hmotnost: ...
@@ -159,7 +180,6 @@ Vypiš je přesně takto:
 
         selected_cat = st.selectbox("Kategorie pro uložení:", KATEGORIE)
         
-        # Dynamický klíč zajistí resetování uploaderu
         uploaded_file = st.file_uploader("📸 Nahrát staženou fotku:", type=["jpg", "png", "jpeg"], key=st.session_state.uploader_key)
         if uploaded_file:
             st.session_state.form_img = Image.open(uploaded_file).convert("RGB")
@@ -168,9 +188,9 @@ Vypiš je přesně takto:
             st.image(st.session_state.form_img, width=180, caption="Aktuální fotka na cedulku")
 
     with col_data:
-        st.header("2. Obsah Cedulky")
+        st.header("2. Obsah Cedulky (Stručně a česky)")
         
-        st.text_area("Vložit výsledek z AI (automaticky ořízne přebytek):", key="ai_input_text", on_change=process_ai_input, height=120, placeholder="Vložte zkopírovaný text z Gemini sem a klikněte mimo toto pole...")
+        st.text_area("Vložit výsledek z AI (automaticky se rozdělí):", key="ai_input_text", on_change=process_ai_input, height=120, placeholder="Vložte zkopírovaný text z Gemini sem a klikněte mimo toto pole...")
         
         st.text_input("Řádek 1 (Stanoviště/Zálivka):", key="form_r1", max_chars=65)
         st.text_input("Řádek 2 (Spon/Výška):", key="form_r2", max_chars=65)
