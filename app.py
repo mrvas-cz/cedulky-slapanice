@@ -13,6 +13,7 @@ DB_DIR = "archiv_cedulek"
 KATEGORIE = ["Papriky - Sladké", "Papriky - Pálivé", "Rajčata", "Sadba", "Bylinky", "Ostatní"]
 
 if not os.path.exists(DB_DIR): os.makedirs(DB_DIR)
+
 st.set_page_config(page_title="Farma Systém - Cedulky", page_icon="🌿", layout="wide")
 
 st.markdown("""
@@ -96,7 +97,7 @@ def draw_label(name, img_plant, lines_text, font_bold, font_reg):
     d.rectangle([0, 0, L_W-1, L_H-1], outline="#EEEEEE", width=3)
     return lbl
 
-# --- 3. PEVNÁ PAMĚŤ (SESSION STATE) ---
+# --- 3. PAMĚŤ ---
 if 'form_name' not in st.session_state: st.session_state.form_name = ""
 if 'form_r1' not in st.session_state: st.session_state.form_r1 = "Stanoviště: | Zálivka: "
 if 'form_r2' not in st.session_state: st.session_state.form_r2 = "Spon: | Výška: "
@@ -105,19 +106,17 @@ if 'form_r4' not in st.session_state: st.session_state.form_r4 = "Použití: | T
 if 'form_img' not in st.session_state: st.session_state.form_img = None
 if 'ai_input_text' not in st.session_state: st.session_state.ai_input_text = ""
 
-# Zpracování textu z AI přes callback (Nikdy nezamrzne)
 def process_ai_input():
     text = st.session_state.ai_input_text
     if not text: return
-    # Odstraníme hvězdičky, kdyby to AI poslalo tučně (např. **Ř1:**)
     clean_text = text.replace("**", "").replace("*", "")
     for line in clean_text.split('\n'):
-        if "Ř1:" in line: st.session_state.form_r1 = line.split("Ř1:")[1].strip()
-        elif "Ř2:" in line: st.session_state.form_r2 = line.split("Ř2:")[1].strip()
-        elif "Ř3:" in line: st.session_state.form_r3 = line.split("Ř3:")[1].strip()
-        elif "Ř4:" in line: st.session_state.form_r4 = line.split("Ř4:")[1].strip()
+        # Oříznutí na 65 znaků rovnou při importu, aby se text zaručeně vešel
+        if "Ř1:" in line: st.session_state.form_r1 = line.split("Ř1:")[1].strip()[:65]
+        elif "Ř2:" in line: st.session_state.form_r2 = line.split("Ř2:")[1].strip()[:65]
+        elif "Ř3:" in line: st.session_state.form_r3 = line.split("Ř3:")[1].strip()[:65]
+        elif "Ř4:" in line: st.session_state.form_r4 = line.split("Ř4:")[1].strip()[:65]
 
-# Vyčištění formuláře
 def reset_form():
     st.session_state.form_name = ""
     st.session_state.form_r1 = "Stanoviště: | Zálivka: "
@@ -136,18 +135,22 @@ with tab1:
     
     with col_search:
         st.header("1. Zadání a Rešerše")
-        
-        # Ošetření duplicity
-        current_name = st.text_input("Název odrůdy (vyhledá se i prompt):", key="form_name")
+        current_name = st.text_input("Název odrůdy:", key="form_name")
         folder_check = clean_filename(current_name)
         
         if current_name and os.path.exists(os.path.join(DB_DIR, folder_check)):
             st.warning("⚠️ Odrůda již v archivu existuje!")
         
-        # AI Prompt a odkazy se objeví po zadání názvu
         if current_name:
             st.info("🤖 **Prompt pro AI (Zkopírujte):**")
-            ai_prompt = f"Jsi odborník. Najdi o odrůdě {current_name} tyto údaje a vypiš je přesně takto:\nŘ1: Stanoviště: ... | Zálivka: ...\nŘ2: Spon: ... | Výška: ...\nŘ3: Plod: ... | Hmotnost: ...\nŘ4: Použití: ... | Tip: ..."
+            # Upravený agresivní prompt
+            ai_prompt = f"""Jsi odborník. Najdi o odrůdě {current_name} tyto údaje.
+!!! KRITICKÉ PRAVIDLO: PIŠ EXTRÉMNĚ STRUČNĚ, POUZE HESLA. KAŽDÝ ŘÁDEK SMÍ MÍT MAXIMÁLNĚ 6 AŽ 7 SLOV CELKEM !!!
+Vypiš je přesně takto:
+Ř1: Stanoviště: ... | Zálivka: ...
+Ř2: Spon: ... | Výška: ...
+Ř3: Plod: ... | Hmotnost: ...
+Ř4: Použití: ... | Tip: ..."""
             st.code(ai_prompt, language="text")
             
             q = current_name.replace(" ", "+")
@@ -164,16 +167,15 @@ with tab1:
             st.image(st.session_state.form_img, width=180, caption="Aktuální fotka na cedulku")
 
     with col_data:
-        st.header("2. Obsah Cedulky")
+        st.header("2. Obsah Cedulky (Max 6-7 slov)")
         
-        # Zde se děje kouzlo. Parametr "on_change" okamžitě rozseká text do políček.
-        st.text_area("Vložit strukturovaný text z AI:", key="ai_input_text", on_change=process_ai_input, height=120, placeholder="Vložte zkopírovaný text z Gemini sem a klikněte mimo toto pole...")
+        st.text_area("Vložit výsledek z AI (automaticky ořízne přebytek):", key="ai_input_text", on_change=process_ai_input, height=120, placeholder="Vložte zkopírovaný text z Gemini sem a klikněte mimo toto pole...")
         
-        # Políčka napojená přímo na paměť
-        st.text_input("Řádek 1 (Stanoviště/Zálivka):", key="form_r1")
-        st.text_input("Řádek 2 (Spon/Výška):", key="form_r2")
-        st.text_input("Řádek 3 (Plod/Hmotnost):", key="form_r3")
-        st.text_input("Řádek 4 (Použití/Tip):", key="form_r4")
+        # Omezení znaků přímo na inputech (max_chars=65 garantuje čitelnost na cedulce)
+        st.text_input("Řádek 1 (Stanoviště/Zálivka):", key="form_r1", max_chars=65)
+        st.text_input("Řádek 2 (Spon/Výška):", key="form_r2", max_chars=65)
+        st.text_input("Řádek 3 (Plod/Hmotnost):", key="form_r3", max_chars=65)
+        st.text_input("Řádek 4 (Použití/Tip):", key="form_r4", max_chars=65)
 
         st.markdown("<br>", unsafe_allow_html=True)
         col_btn1, col_btn2 = st.columns(2)
@@ -207,7 +209,6 @@ with tab1:
             f_b, f_r = get_czech_font("Bold"), get_czech_font("Regular")
             
             lines = [st.session_state.form_r1, st.session_state.form_r2, st.session_state.form_r3, st.session_state.form_r4]
-            # Očištění o prázdné vzory
             valid_lines = [r for r in lines if r.strip() and not r.endswith(": | ")]
             if not valid_lines: valid_lines = lines
             
@@ -252,10 +253,10 @@ with tab2:
                     
                     if c3.button("✏️ Načíst do editoru", key=f"load_{f_name}"):
                         st.session_state.form_name = info.get('name', '')
-                        st.session_state.form_r1 = info.get('r1', '')
-                        st.session_state.form_r2 = info.get('r2', '')
-                        st.session_state.form_r3 = info.get('r3', '')
-                        st.session_state.form_r4 = info.get('r4', '')
+                        st.session_state.form_r1 = info.get('r1', '')[:65]
+                        st.session_state.form_r2 = info.get('r2', '')[:65]
+                        st.session_state.form_r3 = info.get('r3', '')[:65]
+                        st.session_state.form_r4 = info.get('r4', '')[:65]
                         st.session_state.form_img = Image.open(img_p) if os.path.exists(img_p) else None
                         st.success("Načteno! Přepněte se do první záložky.")
                         
