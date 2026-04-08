@@ -7,6 +7,7 @@ import unicodedata
 import json
 import shutil
 import uuid
+import textwrap
 
 # --- 1. KONFIGURACE ---
 DB_DIR = "archiv_cedulek"
@@ -45,9 +46,8 @@ def load_label_data(folder_name):
     img = Image.open(img_path) if os.path.exists(img_path) else None
     return data, img
 
-# PROFESIONÁLNÍ FUNKCE: Odstavec, barvy, zarovnání do bloku a AUTO-SCALE
 def draw_justified_paragraph(d, text, start_x, start_y, max_w, max_h, font_bold_path, font_reg_path):
-    curr_size = 55 # Výchozí velikost (menší než dřív, aby bylo místo na fotku)
+    curr_size = 55 
     best_size = curr_size
     lines_data = []
     
@@ -55,7 +55,6 @@ def draw_justified_paragraph(d, text, start_x, start_y, max_w, max_h, font_bold_
     words_raw = text.split()
     if not words_raw: return
 
-    # KROK 1: Měření a zmenšování (Garantuje, že text nepřejede přes cenu)
     while curr_size >= 20:
         try:
             f_b = ImageFont.truetype(font_bold_path, curr_size) if font_bold_path else ImageFont.load_default()
@@ -95,7 +94,6 @@ def draw_justified_paragraph(d, text, start_x, start_y, max_w, max_h, font_bold_
             break
         curr_size -= 2
 
-    # KROK 2: Vykreslení
     y = start_y
     line_spacing = int(best_size * 1.5)
 
@@ -134,7 +132,6 @@ def draw_label(name, img_plant, lines_text, font_bold, font_reg):
         y += logo.height + 40
     except: y += 100
     
-    # Menší výchozí název (90) pro úsporu místa
     title_size = 90
     f_t = ImageFont.truetype(font_bold, title_size) if font_bold else ImageFont.load_default()
     while font_bold and d.textlength(name.upper(), font=f_t) > (L_W - 80) and title_size > 40:
@@ -142,10 +139,9 @@ def draw_label(name, img_plant, lines_text, font_bold, font_reg):
         f_t = ImageFont.truetype(font_bold, title_size)
         
     d.text((L_W//2, y), name.upper(), fill="#004D40", anchor="mt", font=f_t)
-    y += int(title_size * 1.3) + 20 # Dynamická mezera podle velikosti názvu
+    y += int(title_size * 1.3) + 20 
     
     if img_plant:
-        # VĚTŠÍ OBRÁZEK: Zabírá až 42 % výšky cedulky (předtím to bylo ~35 %)
         max_th, max_tw = int(L_H * 0.42), L_W - 160 
         w, h = img_plant.size
         ratio = min(max_tw/w, max_th/h)
@@ -157,19 +153,16 @@ def draw_label(name, img_plant, lines_text, font_bold, font_reg):
         pad = 12
         d.rectangle([img_x - pad, img_y - pad, img_x + new_size[0] + pad, img_y + new_size[1] + pad], outline="#004D40", width=4)
         lbl.paste(resized_img, (img_x, img_y))
-        
-        y += new_size[1] + 50 # Těsnější okraj pod fotkou
+        y += new_size[1] + 50 
         
     valid_lines = [r.strip() for r in lines_text if r.strip() and not r.endswith(": | ")]
     combined_text = " ".join(valid_lines)
     
-    # TVRDÝ MANTINEL PRO TEXT: Konec cedulky mínus výška ceny (220) mínus nějaká rezerva
     price_y_start = L_H - 220
-    max_text_height = price_y_start - y - 20 # Změří přesně volné místo
+    max_text_height = price_y_start - y - 20 
     
     draw_justified_paragraph(d, combined_text, 100, y, L_W - 200, max_text_height, font_bold, font_reg)
         
-    # CENA (Zůstává na svém místě)
     bx_w, bx_h, bx_y = 420, 160, price_y_start
     d.rectangle([(L_W-bx_w)//2, bx_y, (L_W+bx_w)//2, bx_y+bx_h], outline="#004D40", width=12)
     f_p = ImageFont.truetype(font_bold, 100) if font_bold else ImageFont.load_default()
@@ -183,7 +176,8 @@ if 'd' not in st.session_state:
     st.session_state.d = {
         "name": "", "cat": "Ostatní", "img": None,
         "r1": "Stanoviště: | Zálivka: ", "r2": "Spon: | Výška: ",
-        "r3": "Plod: | Hmotnost: ", "r4": "Použití: | Tip: ", "last_ai": ""
+        "r3": "Plod: | Hmotnost: ", "r4": "Použití: | Tip: ", "last_ai": "",
+        "last_name_check": ""
     }
 if 'show_load_msg' not in st.session_state: st.session_state.show_load_msg = False
 
@@ -205,8 +199,19 @@ with tab1:
     with col_search:
         st.header("1. Zadání a Rešerše")
         
-        st.text_input("Název odrůdy:", value=st.session_state.d["name"], key=c_key("name"))
+        st.text_input("Název odrůdy:", value=st.session_state.d["name"], key=c_key("name"), placeholder="Např. rajče start")
         curr_name = get_current("name")
+        
+        # CHYTRÁ AUTO-KATEGORIZACE PODLE ZADANÉHO SLOVA
+        if curr_name != st.session_state.d.get("last_name_check", ""):
+            ln = curr_name.lower()
+            if "rajče" in ln or "rajčata" in ln or "rajcata" in ln:
+                st.session_state.d["cat"] = "Rajčata"
+            elif "paprika" in ln or "papriky" in ln:
+                st.session_state.d["cat"] = "Papriky - Sladké"
+            elif "bazalka" in ln or "pažitka" in ln or "bylink" in ln or "máta" in ln:
+                st.session_state.d["cat"] = "Bylinky"
+            st.session_state.d["last_name_check"] = curr_name
         
         folder_check = clean_filename(curr_name)
         if curr_name and os.path.exists(os.path.join(DB_DIR, folder_check)):
@@ -223,14 +228,15 @@ with tab1:
 
         if curr_name:
             st.info("🤖 **Prompt pro AI (Zkopírujte):**")
-            ai_prompt = f"Jsi odborník. Najdi o odrůdě {curr_name} tyto údaje.\n!!! KRITICKÁ PRAVIDLA:\n1. PIŠ EXTRÉMNĚ STRUČNĚ (max 6 slov na řádek).\n2. PIŠ LAICKY PRO BĚŽNÉHO SPOTŘEBITELE. VYNECH VŠECHNA CIZÍ NEBO ODBORNÁ SLOVA. !!!\nVypiš to přesně takto:\nŘ1: Stanoviště: ... | Zálivka: ...\nŘ2: Spon: ... | Výška: ...\nŘ3: Plod: ... | Hmotnost: ...\nŘ4: Použití: ... | Tip: ..."
+            # VYLEPŠENÝ PROMPT (Auto-korekce názvu)
+            ai_prompt = f"Jsi odborník. Hledáme odrůdu: {curr_name}.\n!!! KRITICKÁ PRAVIDLA:\n1. OVĚŘ A OPRAV NÁZEV: Zjisti přesný oficiální název (např. 'rajče start' -> 'Rajče Start F1'). Pokud je to zkomolenina (např. Zlatka místo Zlatava), zeptej se/upozorni.\n2. PIŠ EXTRÉMNĚ STRUČNĚ (max 6 slov na řádek).\n3. PIŠ LAICKY PRO BĚŽNÉHO SPOTŘEBITELE. VYNECH VŠECHNA CIZÍ NEBO ODBORNÁ SLOVA. !!!\nVypiš to přesně takto:\nPŘESNÝ NÁZEV: (doplň oficiální název)\nŘ1: Stanoviště: ... | Zálivka: ...\nŘ2: Spon: ... | Výška: ...\nŘ3: Plod: ... | Hmotnost: ...\nŘ4: Použití: ... | Tip: ..."
             st.code(ai_prompt, language="text")
 
             q = curr_name.replace(" ", "+")
             st.markdown(f"🔍 [Obrázky Google](https://google.cz/search?tbm=isch&q={q}+fruit+macro+white+background) | [Data Itálie](https://translate.google.com/translate?sl=auto&tl=cs&u=https://www.google.com/search?q={q}+varieta+peso) | [Data Nizozemí](https://translate.google.com/translate?sl=auto&tl=cs&u=https://www.google.com/search?q={q}+ras+kenmerken)")
 
         cat_idx = KATEGORIE.index(st.session_state.d["cat"]) if st.session_state.d["cat"] in KATEGORIE else KATEGORIE.index("Ostatní")
-        st.selectbox("Kategorie pro uložení:", KATEGORIE, index=cat_idx, key=c_key("cat"))
+        st.session_state.d["cat"] = st.selectbox("Kategorie pro uložení:", KATEGORIE, index=cat_idx, key=c_key("cat"))
 
         up_file = st.file_uploader("📸 Nahrát staženou fotku:", type=["jpg", "png", "jpeg"], key=c_key("img_up"))
         if up_file:
@@ -240,7 +246,7 @@ with tab1:
             st.image(st.session_state.d["img"], width=180, caption="Aktuální fotka na cedulku")
 
     with col_data:
-        st.header("2. Obsah Cedulky (Odstavec)")
+        st.header("2. Obsah Cedulky")
 
         ai_input = st.text_area("Vložit výsledek z AI:", height=120, key=c_key("ai"))
         if ai_input and ai_input != st.session_state.d.get("last_ai"):
@@ -253,8 +259,13 @@ with tab1:
             
             st.session_state.d["last_ai"] = ai_input
             clean_txt = ai_input.replace("**", "").replace("*", "")
+            
+            # CHYTRÉ ČTENÍ: Přečte i opravený název!
             for line in clean_txt.split('\n'):
-                if "Ř1:" in line: st.session_state.d["r1"] = line.split("Ř1:")[1].strip()[:65]
+                if "PŘESNÝ NÁZEV:" in line.upper():
+                    possible_name = line.split(":", 1)[1].strip()
+                    if possible_name: st.session_state.d["name"] = possible_name
+                elif "Ř1:" in line: st.session_state.d["r1"] = line.split("Ř1:")[1].strip()[:65]
                 elif "Ř2:" in line: st.session_state.d["r2"] = line.split("Ř2:")[1].strip()[:65]
                 elif "Ř3:" in line: st.session_state.d["r3"] = line.split("Ř3:")[1].strip()[:65]
                 elif "Ř4:" in line: st.session_state.d["r4"] = line.split("Ř4:")[1].strip()[:65]
@@ -278,7 +289,7 @@ with tab1:
                     p = os.path.join(DB_DIR, clean_filename(f_name))
                     if not os.path.exists(p): os.makedirs(p)
                     d_out = {
-                        "name": f_name, "cat": get_current("cat"),
+                        "name": f_name, "cat": st.session_state.d["cat"],
                         "r1": get_current("r1"), "r2": get_current("r2"),
                         "r3": get_current("r3"), "r4": get_current("r4")
                     }
@@ -294,7 +305,8 @@ with tab1:
                 st.session_state.d = {
                     "name": "", "cat": "Ostatní", "img": None,
                     "r1": "Stanoviště: | Zálivka: ", "r2": "Spon: | Výška: ",
-                    "r3": "Plod: | Hmotnost: ", "r4": "Použití: | Tip: ", "last_ai": ""
+                    "r3": "Plod: | Hmotnost: ", "r4": "Použití: | Tip: ", "last_ai": "",
+                    "last_name_check": ""
                 }
                 st.session_state.form_key = str(uuid.uuid4())
                 st.rerun()
