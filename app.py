@@ -23,7 +23,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 2. GRAFICKÉ FUNKCE A CHYTRÝ TEXT ---
+# --- 2. GRAFICKÉ FUNKCE A ZAROVNÁNÍ DO BLOKU ---
 @st.cache_resource
 def get_czech_font(font_type="Bold"):
     file_name = f"Roboto-{font_type}.ttf"
@@ -45,68 +45,83 @@ def load_label_data(folder_name):
     img = Image.open(img_path) if os.path.exists(img_path) else None
     return data, img
 
-# CHYTRÁ FUNKCE S AUTO-ZMENŠOVÁNÍM PÍSMA (Garantuje, že text nezasáhne do ceny)
-def draw_auto_scaled_text(d, lines_text, start_x, start_y, max_w, max_h, font_bold, font_reg):
-    curr_size = 65 # Začínáme s obřím písmem
+# PROFESIONÁLNÍ FUNKCE: Odstavec, barvy a zarovnání do bloku (od kraje ke kraji)
+def draw_justified_paragraph(d, text, start_x, start_y, max_w, max_h, font_bold_path, font_reg_path):
+    curr_size = 65
     best_size = curr_size
+    lines_data = []
     
-    # KROK 1: Měření a hledání ideální velikosti písma
+    # Očištění textu (uděláme z oddělovačů samostatná slova)
+    text = text.replace('|', ' | ')
+    words_raw = text.split()
+    if not words_raw: return
+
+    # KROK 1: Zkoušení velikosti písma, aby se odstavec vešel nad cenu
     while curr_size >= 25:
-        f_b = ImageFont.truetype(font_bold, curr_size) if font_bold else ImageFont.load_default()
-        f_r = ImageFont.truetype(font_reg, curr_size) if font_reg else ImageFont.load_default()
-        line_spacing = int(curr_size * 1.3)
-        paragraph_spacing = int(curr_size * 0.4)
-        
-        total_h = 0
-        for line in lines_text:
-            if not line.strip(): continue
-            x = 0
-            words = line.replace('|', ' | ').split()
-            lines_in_p = 1
-            for word in words:
-                f_curr = f_b if word.endswith(':') else f_r
-                w_len = d.textlength(word + " ", font=f_curr)
-                # Pokud slovo přesáhne šířku, odřádkujeme
-                if x + w_len > max_w and x > 0:
-                    x = 0
-                    lines_in_p += 1
-                x += w_len
-            total_h += (lines_in_p * line_spacing) + paragraph_spacing
+        try:
+            f_b = ImageFont.truetype(font_bold_path, curr_size) if font_bold_path else ImageFont.load_default()
+            f_r = ImageFont.truetype(font_reg_path, curr_size) if font_reg_path else ImageFont.load_default()
+        except:
+            f_b = ImageFont.load_default(); f_r = ImageFont.load_default()
             
-        # Pokud se text výškově vejde do prostoru nad cenovkou, našli jsme vítěze
+        lines_data = []
+        current_line = []
+        current_w = 0
+        space_w = d.textlength(" ", font=f_r)
+
+        # Skládání slov na řádky
+        for word in words_raw:
+            f_curr = f_b if word.endswith(':') else f_r
+            w_len = d.textlength(word, font=f_curr)
+
+            if not current_line:
+                current_line.append((word, f_curr, w_len))
+                current_w = w_len
+            else:
+                if current_w + space_w + w_len <= max_w:
+                    current_line.append((word, f_curr, w_len))
+                    current_w += space_w + w_len
+                else:
+                    lines_data.append((current_line, current_w))
+                    current_line = [(word, f_curr, w_len)]
+                    current_w = w_len
+
+        if current_line:
+            lines_data.append((current_line, current_w))
+
+        line_spacing = int(curr_size * 1.5) # Řádkování
+        total_h = len(lines_data) * line_spacing
+
         if total_h <= max_h:
             best_size = curr_size
             break
-        curr_size -= 2 # Pokud se nevejde, zmenšíme písmo a měříme znovu
-        
-    # KROK 2: Finální vykreslení vítěznou velikostí
-    f_b = ImageFont.truetype(font_bold, best_size) if font_bold else ImageFont.load_default()
-    f_r = ImageFont.truetype(font_reg, best_size) if font_reg else ImageFont.load_default()
-    line_spacing = int(best_size * 1.3)
-    paragraph_spacing = int(best_size * 0.4)
-    
+        curr_size -= 2
+
+    # KROK 2: Finální vykreslení a matematické roztažení mezer (Justify)
     y = start_y
-    for line in lines_text:
-        if not line.strip(): continue
-        x = start_x
-        words = line.replace('|', ' | ').split()
-        for word in words:
-            # Barevné odlišení: klíčová slova zeleně, svislítka šedě, zbytek černě
-            if word.endswith(':'):
-                f_curr = f_b; fill_curr = "#004D40"
-            elif word == '|':
-                f_curr = f_r; fill_curr = "#AAAAAA"
-            else:
-                f_curr = f_r; fill_curr = "#222222"
+    line_spacing = int(best_size * 1.5)
+
+    for i, (line_words, line_w) in enumerate(lines_data):
+        # Poslední řádek odstavce se nezarovnává do bloku, ale doleva
+        if len(line_words) == 1 or i == len(lines_data) - 1:
+            x = start_x
+            for word, font, w_len in line_words:
+                fill = "#004D40" if word.endswith(':') else ("#AAAAAA" if word == '|' else "#222222")
+                d.text((x, y), word, fill=fill, font=font)
+                x += w_len + d.textlength(" ", font=font)
+        else:
+            # Zarovnání do bloku (rozdělení zbylého prázdného místa mezi slova)
+            total_word_w = sum(w_len for _, _, w_len in line_words)
+            total_space = max_w - total_word_w
+            gap = total_space / (len(line_words) - 1) # Velikost mezery pro tento konkrétní řádek
+
+            x = start_x
+            for j, (word, font, w_len) in enumerate(line_words):
+                fill = "#004D40" if word.endswith(':') else ("#AAAAAA" if word == '|' else "#222222")
+                d.text((x, y), word, fill=fill, font=font)
+                x += w_len + gap # Skočíme na další pozici s vypočítanou mezerou
                 
-            w_len = d.textlength(word + " ", font=f_curr)
-            if x + w_len > start_x + max_w and x > start_x:
-                x = start_x
-                y += line_spacing
-                
-            d.text((x, y), word, fill=fill_curr, font=f_curr)
-            x += w_len
-        y += line_spacing + paragraph_spacing
+        y += line_spacing
 
 def draw_label(name, img_plant, lines_text, font_bold, font_reg):
     A4_W, A4_H = 2480, 3508
@@ -146,9 +161,12 @@ def draw_label(name, img_plant, lines_text, font_bold, font_reg):
         lbl.paste(resized_img, (img_x, img_y))
         y += new_size[1] + 80
         
-    # MAXIMÁLNÍ VÝŠKA PRO TEXT (od spodku fotky po začátek cenovky s rezervou)
-    max_text_height = (L_H - 240) - y 
-    draw_auto_scaled_text(d, lines_text, 100, y, L_W - 200, max_text_height, font_bold, font_reg)
+    # PŘÍPRAVA TEXTU A VYKRESLENÍ ODSTAVCE
+    valid_lines = [r.strip() for r in lines_text if r.strip() and not r.endswith(": | ")]
+    combined_text = " ".join(valid_lines) # Spojíme všechny řádky do jedné dlouhé věty
+    
+    max_text_height = (L_H - 240) - y # Maximální prostor nad cenovkou
+    draw_justified_paragraph(d, combined_text, 100, y, L_W - 200, max_text_height, font_bold, font_reg)
         
     # CENA
     bx_w, bx_h, bx_y = 420, 160, L_H - 220
@@ -166,22 +184,17 @@ if 'd' not in st.session_state:
         "r1": "Stanoviště: | Zálivka: ", "r2": "Spon: | Výška: ",
         "r3": "Plod: | Hmotnost: ", "r4": "Použití: | Tip: ", "last_ai": ""
     }
-# Proměnná pro zobrazení úspěšné hlášky
 if 'show_load_msg' not in st.session_state: st.session_state.show_load_msg = False
 
-def c_key(field):
-    return f"{field}_{st.session_state.form_key}"
-
-def get_current(field):
-    return st.session_state.get(c_key(field), st.session_state.d.get(field, ""))
+def c_key(field): return f"{field}_{st.session_state.form_key}"
+def get_current(field): return st.session_state.get(c_key(field), st.session_state.d.get(field, ""))
 
 # --- 4. APLIKACE A UI ---
 st.title("🌿 Farmářský Systém: Generátor Cedulek")
 
-# Oznámení o úspěšném načtení
 if st.session_state.show_load_msg:
     st.success("✅ Cedulka úspěšně načtena! Vše je v Editoru připraveno k tisku nebo úpravám.")
-    st.session_state.show_load_msg = False # Zobrazí se jen jednou
+    st.session_state.show_load_msg = False
 
 tab1, tab2 = st.tabs(["🖌️ Editor & Tisk", "🗃️ Sklad / Archiv"])
 
@@ -226,7 +239,7 @@ with tab1:
             st.image(st.session_state.d["img"], width=180, caption="Aktuální fotka na cedulku")
 
     with col_data:
-        st.header("2. Obsah Cedulky")
+        st.header("2. Obsah Cedulky (Odstavec)")
 
         ai_input = st.text_area("Vložit výsledek z AI:", height=120, key=c_key("ai"))
         if ai_input and ai_input != st.session_state.d.get("last_ai"):
@@ -337,7 +350,6 @@ with tab2:
                     c2.markdown(f"**{info.get('name', 'Neznámý')}**")
                     c2.caption(f"{info.get('r1', '')} \n{info.get('r2', '')}")
 
-                    # Tlačítko pro načtení
                     if c3.button("✏️ Načíst do editoru", key=f"load_{f_name}"):
                         loaded_d, loaded_img = load_label_data(f_name)
                         st.session_state.d.update(loaded_d)
@@ -345,7 +357,7 @@ with tab2:
                         st.session_state.d["img"] = loaded_img
                         st.session_state.d["last_ai"] = ""
                         st.session_state.form_key = str(uuid.uuid4())
-                        st.session_state.show_load_msg = True # Aktivuje hlášku!
+                        st.session_state.show_load_msg = True
                         st.rerun()
 
                     if c3.button("🗑️ Smazat", key=f"del_{f_name}", type="primary"):
