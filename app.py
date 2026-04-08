@@ -132,7 +132,7 @@ def draw_label(name, img_plant, lines_text, shu_text, font_bold, font_reg):
         y += logo.height + 40
     except: y += 100
     
-    # NÁZEV
+    # NÁZEV (S auto-zmenšováním)
     title_size = 90
     f_t = ImageFont.truetype(font_bold, title_size) if font_bold else ImageFont.load_default()
     while font_bold and d.textlength(name.upper(), font=f_t) > (L_W - 80) and title_size > 40:
@@ -142,17 +142,22 @@ def draw_label(name, img_plant, lines_text, shu_text, font_bold, font_reg):
     d.text((L_W//2, y), name.upper(), fill="#004D40", anchor="mt", font=f_t)
     y += int(title_size * 1.3) + 10 
     
-    # PÁLIVOST (SHU) - Velké červené písmo pod názvem
+    # OPRAVENO: PÁLIVOST (SHU) - Nyní s dynamickým Auto-Scale, aby nikdy nepřetekla okraje!
     if shu_text and shu_text.strip():
-        f_shu = ImageFont.truetype(font_bold, 70) if font_bold else ImageFont.load_default()
-        d.text((L_W//2, y), shu_text.upper(), fill="#D32F2F", anchor="mt", font=f_shu) # #D32F2F je pěkná sytá červená
-        y += 100
+        shu_size = 70
+        f_shu = ImageFont.truetype(font_bold, shu_size) if font_bold else ImageFont.load_default()
+        # Zmenšuje, dokud se text bezpečně nevejde do cedulky (s rezervou 100px)
+        while font_bold and d.textlength(shu_text.upper(), font=f_shu) > (L_W - 100) and shu_size > 30:
+            shu_size -= 5
+            f_shu = ImageFont.truetype(font_bold, shu_size)
+            
+        d.text((L_W//2, y), shu_text.upper(), fill="#D32F2F", anchor="mt", font=f_shu) 
+        y += int(shu_size * 1.3) + 10  # Dynamická mezera podle výsledné velikosti písma
     else:
-        y += 20 # Jen malá mezera, pokud SHU není
+        y += 20 
     
     # FOTKA
     if img_plant:
-        # Pokud je SHU text, fotku malinko zmenšíme, aby se vše krásně vešlo
         img_scale = 0.38 if (shu_text and shu_text.strip()) else 0.42
         max_th, max_tw = int(L_H * img_scale), L_W - 160 
         w, h = img_plant.size
@@ -198,6 +203,15 @@ if 'show_load_msg' not in st.session_state: st.session_state.show_load_msg = Fal
 def c_key(field): return f"{field}_{st.session_state.form_key}"
 def get_current(field): return st.session_state.get(c_key(field), st.session_state.d.get(field, ""))
 
+def sync_to_d():
+    st.session_state.d["name"] = get_current("name")
+    st.session_state.d["cat"] = get_current("cat")
+    st.session_state.d["r1"] = get_current("r1")
+    st.session_state.d["r2"] = get_current("r2")
+    st.session_state.d["r3"] = get_current("r3")
+    st.session_state.d["r4"] = get_current("r4")
+    st.session_state.d["shu"] = get_current("shu")
+
 # --- 4. APLIKACE A UI ---
 st.title("🌿 Farmářský Systém: Generátor Cedulek")
 
@@ -216,7 +230,6 @@ with tab1:
         st.text_input("Název odrůdy:", value=st.session_state.d["name"], key=c_key("name"), placeholder="Např. rajče start")
         curr_name = get_current("name")
         
-        # CHYTRÁ AUTO-KATEGORIZACE PODLE ZADANÉHO SLOVA (včetně Chilli)
         if curr_name != st.session_state.d.get("last_name_check", ""):
             ln = curr_name.lower()
             matched_cat = None
@@ -231,6 +244,7 @@ with tab1:
             
             st.session_state.d["last_name_check"] = curr_name
             if matched_cat and st.session_state.d.get("cat") != matched_cat:
+                sync_to_d() 
                 st.session_state.d["cat"] = matched_cat
                 st.session_state.form_key = str(uuid.uuid4())
                 st.rerun()
@@ -242,7 +256,6 @@ with tab1:
                 loaded_d, loaded_img = load_label_data(folder_check)
                 st.session_state.d.update(loaded_d)
                 if st.session_state.d.get("cat") not in KATEGORIE: st.session_state.d["cat"] = "Ostatní"
-                # Ošetření pro starší cedulky, které SHU nemají
                 if "shu" not in st.session_state.d: st.session_state.d["shu"] = "" 
                 st.session_state.d["img"] = loaded_img
                 st.session_state.d["last_ai"] = ""
@@ -255,10 +268,7 @@ with tab1:
 
         if curr_name:
             st.info("🤖 **Prompt pro AI (Zkopírujte):**")
-            
-            # POKUD JE KATEGORIE PÁLIVÁ PAPRIKA, PŘIDÁ SE DO PROMPTU POKYN PRO SHU
             shu_prompt_addon = "\nŘ5: Pálivost: [Slovní popis, např. Extrémně pálivá] | SHU: [Číslo]" if st.session_state.d["cat"] == "Papriky - Pálivé" else ""
-            
             ai_prompt = f"Jsi odborník. Hledáme odrůdu: {curr_name}.\n!!! KRITICKÁ PRAVIDLA:\n1. OVĚŘ A OPRAV NÁZEV: Zjisti přesný oficiální název (např. 'rajče start' -> 'Rajče Start F1').\n2. PIŠ EXTRÉMNĚ STRUČNĚ (max 6 slov na řádek).\n3. PIŠ LAICKY PRO BĚŽNÉHO SPOTŘEBITELE. VYNECH VŠECHNA CIZÍ NEBO ODBORNÁ SLOVA. !!!\nVypiš to přesně takto:\nPŘESNÝ NÁZEV: (doplň oficiální název)\nŘ1: Stanoviště: ... | Zálivka: ...\nŘ2: Spon: ... | Výška: ...\nŘ3: Plod: ... | Hmotnost: ...\nŘ4: Použití: ... | Tip: ...{shu_prompt_addon}"
             st.code(ai_prompt, language="text")
 
@@ -277,14 +287,7 @@ with tab1:
 
         ai_input = st.text_area("Vložit výsledek z AI:", height=120, key=c_key("ai"))
         if ai_input and ai_input != st.session_state.d.get("last_ai"):
-            st.session_state.d["name"] = get_current("name")
-            st.session_state.d["cat"] = get_current("cat")
-            st.session_state.d["r1"] = get_current("r1")
-            st.session_state.d["r2"] = get_current("r2")
-            st.session_state.d["r3"] = get_current("r3")
-            st.session_state.d["r4"] = get_current("r4")
-            st.session_state.d["shu"] = get_current("shu")
-            
+            sync_to_d() 
             st.session_state.d["last_ai"] = ai_input
             clean_txt = ai_input.replace("**", "").replace("*", "")
             
@@ -296,14 +299,12 @@ with tab1:
                 elif "Ř2:" in line: st.session_state.d["r2"] = line.split("Ř2:")[1].strip()[:65]
                 elif "Ř3:" in line: st.session_state.d["r3"] = line.split("Ř3:")[1].strip()[:65]
                 elif "Ř4:" in line: st.session_state.d["r4"] = line.split("Ř4:")[1].strip()[:65]
-                # PŘIDÁNO: Načítání Pálivosti
                 elif "Ř5:" in line or "PÁLIVOST:" in line.upper(): 
                     st.session_state.d["shu"] = line.split(":", 1)[1].strip()[:65]
             
             st.session_state.form_key = str(uuid.uuid4())
             st.rerun()
 
-        # Nové políčko pro pálivost (zobrazuje se stále, ať je to vidět)
         st.session_state.d["shu"] = st.text_input("🌶️ Pálivost (SHU) - Vykreslí se velkým červeným písmem:", value=st.session_state.d.get("shu", ""), max_chars=65, key=c_key("shu"), placeholder="Např. Středně pálivá | 30 000 SHU")
         
         st.text_input("Řádek 1 (Stanoviště/Zálivka):", value=st.session_state.d["r1"], max_chars=65, key=c_key("r1"))
@@ -316,16 +317,17 @@ with tab1:
 
         with col_btn1:
             if st.button("💾 ULOŽIT DO SKLADU", use_container_width=True, type="primary"):
-                f_name = get_current("name")
+                sync_to_d() 
+                f_name = st.session_state.d["name"]
                 f_img = st.session_state.d.get("img")
                 if f_name and f_img:
                     p = os.path.join(DB_DIR, clean_filename(f_name))
                     if not os.path.exists(p): os.makedirs(p)
                     d_out = {
                         "name": f_name, "cat": st.session_state.d["cat"],
-                        "r1": get_current("r1"), "r2": get_current("r2"),
-                        "r3": get_current("r3"), "r4": get_current("r4"),
-                        "shu": get_current("shu")
+                        "r1": st.session_state.d["r1"], "r2": st.session_state.d["r2"],
+                        "r3": st.session_state.d["r3"], "r4": st.session_state.d["r4"],
+                        "shu": st.session_state.d["shu"]
                     }
                     with open(os.path.join(p, "data.json"), "w", encoding="utf-8") as f:
                         json.dump(d_out, f, ensure_ascii=False)
