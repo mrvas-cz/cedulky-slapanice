@@ -7,6 +7,7 @@ import unicodedata
 import json
 import shutil
 import uuid
+import textwrap
 
 # --- 1. KONFIGURACE ---
 DB_DIR = "archiv_cedulek"
@@ -66,7 +67,7 @@ def draw_label(name, img_plant, lines_text, font_bold, font_reg):
     d.text((L_W//2, y), name.upper(), fill="#004D40", anchor="mt", font=f_t)
     y += 160
     
-    # FOTKA S ELEGANTNÍM RÁMEČKEM
+    # FOTKA S ELEGANTNÍM RÁMEČKEM (PASPARTA)
     if img_plant:
         max_th, max_tw = int(L_H * 0.38), L_W - 240
         w, h = img_plant.size
@@ -77,7 +78,6 @@ def draw_label(name, img_plant, lines_text, font_bold, font_reg):
         img_x = (L_W - new_size[0]) // 2
         img_y = y
         
-        # Rámeček fotky (pasparta)
         pad = 12
         d.rectangle([img_x - pad, img_y - pad, img_x + new_size[0] + pad, img_y + new_size[1] + pad], outline="#004D40", width=4)
         lbl.paste(resized_img, (img_x, img_y))
@@ -115,7 +115,7 @@ def draw_label(name, img_plant, lines_text, font_bold, font_reg):
     d.rectangle([0, 0, L_W-1, L_H-1], outline="#EEEEEE", width=3)
     return lbl
 
-# --- 3. PAMĚŤ (SESSION STATE) ---
+# --- 3. PAMĚŤ & CALLBACKS (ZDE JE TA OPRAVA) ---
 if 'form_name' not in st.session_state: st.session_state.form_name = ""
 if 'form_r1' not in st.session_state: st.session_state.form_r1 = "Stanoviště: | Zálivka: "
 if 'form_r2' not in st.session_state: st.session_state.form_r2 = "Spon: | Výška: "
@@ -125,6 +125,20 @@ if 'form_img' not in st.session_state: st.session_state.form_img = None
 if 'form_cat' not in st.session_state: st.session_state.form_cat = "Ostatní"
 if 'ai_input_text' not in st.session_state: st.session_state.ai_input_text = ""
 if 'uploader_key' not in st.session_state: st.session_state.uploader_key = str(uuid.uuid4())
+if 'show_success_load' not in st.session_state: st.session_state.show_success_load = False
+
+# Tato funkce se spustí BEZPEČNĚ PŘED VYKRESLENÍM, když se klikne na "Načíst"
+def load_item_callback(folder_name):
+    d, img = load_label_data(folder_name)
+    st.session_state.form_name = d.get('name', '')
+    st.session_state.form_r1 = d.get('r1', '')[:65]
+    st.session_state.form_r2 = d.get('r2', '')[:65]
+    st.session_state.form_r3 = d.get('r3', '')[:65]
+    st.session_state.form_r4 = d.get('r4', '')[:65]
+    st.session_state.form_cat = d.get('cat', 'Ostatní')
+    st.session_state.form_img = img
+    st.session_state.uploader_key = str(uuid.uuid4())
+    st.session_state.show_success_load = True
 
 def process_ai_input():
     text = st.session_state.ai_input_text
@@ -149,6 +163,12 @@ def reset_form():
 
 # --- 4. APLIKACE A UI ---
 st.title("🌿 Farmářský Systém: Generátor Cedulek")
+
+# Zobrazení hlášky o úspěšném načtení z callbacku
+if st.session_state.show_success_load:
+    st.success("✅ Úspěšně načteno z archivu! Jste připraveni k editaci.")
+    st.session_state.show_success_load = False
+
 tab1, tab2 = st.tabs(["🖌️ Editor & Tisk", "🗃️ Sklad / Archiv"])
 
 with tab1:
@@ -159,19 +179,10 @@ with tab1:
         current_name = st.text_input("Název odrůdy:", key="form_name")
         folder_check = clean_filename(current_name)
         
-        # OPRAVA 1: Tlačítko pro načtení přímo z první záložky
+        # Bezpečné tlačítko načtení přes callback
         if current_name and os.path.exists(os.path.join(DB_DIR, folder_check)):
             st.warning("⚠️ Odrůda již v archivu existuje!")
-            if st.button("📂 Načíst existující data", type="primary"):
-                d, img = load_label_data(folder_check)
-                st.session_state.form_name = d.get('name', '')
-                st.session_state.form_r1 = d.get('r1', '')[:65]
-                st.session_state.form_r2 = d.get('r2', '')[:65]
-                st.session_state.form_r3 = d.get('r3', '')[:65]
-                st.session_state.form_r4 = d.get('r4', '')[:65]
-                st.session_state.form_cat = d.get('cat', 'Ostatní')
-                st.session_state.form_img = img
-                st.rerun()
+            st.button("📂 Načíst existující data", type="primary", on_click=load_item_callback, args=(folder_check,))
         
         if current_name:
             st.info("🤖 **Prompt pro AI (Zkopírujte):**")
@@ -189,7 +200,6 @@ Vypiš to přesně takto:
             q = current_name.replace(" ", "+")
             st.markdown(f"🔍 [Obrázky Google](https://google.cz/search?tbm=isch&q={q}+fruit+macro+white+background) | [Data Itálie](https://translate.google.com/translate?sl=auto&tl=cs&u=https://www.google.com/search?q={q}+varieta+peso) | [Data Nizozemí](https://translate.google.com/translate?sl=auto&tl=cs&u=https://www.google.com/search?q={q}+ras+kenmerken)")
 
-        # Zabezpečení správného indexu kategorie
         cat_index = KATEGORIE.index(st.session_state.form_cat) if st.session_state.form_cat in KATEGORIE else KATEGORIE.index("Ostatní")
         selected_cat = st.selectbox("Kategorie pro uložení:", KATEGORIE, index=cat_index)
         
@@ -284,17 +294,8 @@ with tab2:
                     c2.markdown(f"**{info.get('name', 'Neznámý')}**")
                     c2.caption(f"{info.get('r1', '')} \n{info.get('r2', '')}")
                     
-                    # OPRAVA 2: Tlačítko pro načtení z archivu s rerunem!
-                    if c3.button("✏️ Načíst do editoru", key=f"load_{f_name}"):
-                        d, img = load_label_data(f_name)
-                        st.session_state.form_name = d.get('name', '')
-                        st.session_state.form_r1 = d.get('r1', '')[:65]
-                        st.session_state.form_r2 = d.get('r2', '')[:65]
-                        st.session_state.form_r3 = d.get('r3', '')[:65]
-                        st.session_state.form_r4 = d.get('r4', '')[:65]
-                        st.session_state.form_cat = d.get('cat', 'Ostatní')
-                        st.session_state.form_img = img
-                        st.rerun()  # TOTO CHYBĚLO! Teď to obrazovku okamžitě přepíše.
+                    # BEZPEČNÉ TLAČÍTKO NAČTENÍ PŘES CALLBACK
+                    c3.button("✏️ Načíst do editoru", key=f"load_{f_name}", on_click=load_item_callback, args=(f_name,))
                         
                     if c3.button("🗑️ Smazat", key=f"del_{f_name}", type="primary"):
                         shutil.rmtree(os.path.join(DB_DIR, f_name))
