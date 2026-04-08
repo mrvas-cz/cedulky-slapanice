@@ -1,16 +1,22 @@
 import streamlit as st
-from PIL import Image, ImageDraw, ImageFont, ImageOps
+from PIL import Image, ImageDraw, ImageFont
 import io
 import os
 import urllib.request
 import unicodedata
 import textwrap
+import json
+import shutil
 
-st.set_page_config(page_title="PRO Cedulkovač Farma - Auto-Layout", layout="wide")
+# --- KONFIGURACE A CESTY ---
+DB_DIR = "archiv_cedulek"
+if not os.path.exists(DB_DIR):
+    os.makedirs(DB_DIR)
+
+st.set_page_config(page_title="PRO Cedulkovač Farma - s Archivem", layout="wide")
 
 @st.cache_resource
 def get_czech_font(font_type="Bold"):
-    # Stáhne font Roboto Bold nebo Regular
     file_name = f"Roboto-{font_type}.ttf"
     if not os.path.exists(file_name):
         try:
@@ -23,62 +29,60 @@ def clean_filename(text):
     nfkd_form = unicodedata.normalize('NFKD', text)
     return nfkd_form.encode('ASCII', 'ignore').decode('utf-8').replace(" ", "_").upper()
 
-# --- POMOCNÁ FUNKCE PRO KRESLENÍ ZALOMENÉHO TEXTU S DYNAMICKOU VELIKOSTÍ ---
+# --- FUNKCE PRO UKLÁDÁNÍ A NAČÍTÁNÍ ---
+def save_to_archive(name, r1, r2, r3, r4, image):
+    folder_name = clean_filename(name)
+    path = os.path.join(DB_DIR, folder_name)
+    if not os.path.exists(path):
+        os.makedirs(path)
+    
+    # Uložení textů
+    data = {"name": name, "r1": r1, "r2": r2, "r3": r3, "r4": r4}
+    with open(os.path.join(path, "data.json"), "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False)
+    
+    # Uložení obrázku
+    if image:
+        image.save(os.path.join(path, "photo.jpg"), "JPEG")
+    return True
+
+def delete_from_archive(folder_name):
+    path = os.path.join(DB_DIR, folder_name)
+    if os.path.exists(path):
+        shutil.rmtree(path)
+        return True
+    return False
+
+# --- FUNKCE KRESLENÍ (Zůstává stejná jako minule) ---
 def draw_text_box(draw, text, pos, max_width, max_height, font_path, start_font_size):
     current_font_size = start_font_size
     lines = []
-    
-    # Najdeme ideální velikost písma, aby se text vešel do boxu
-    while current_font_size > 25: # Minimální čitelná velikost
+    while current_font_size > 22:
         font = ImageFont.truetype(font_path, current_font_size)
         lines = []
-        
-        # Rozdělíme text podle odrážek
         raw_lines = text.split('\n')
-        
         for raw_line in raw_lines:
             if not raw_line.strip(): continue
-            # Zalamujeme každý řádek podle šířky cedulky
-            # Odhad počtu znaků na řádek podle velikosti písma
             avg_char_width = draw.textlength("a", font=font)
-            chars_per_line = int(max_width / avg_char_width)
+            chars_per_line = max(1, int(max_width / avg_char_width))
             wrapped = textwrap.wrap(raw_line, width=chars_per_line)
             for i, w_line in enumerate(wrapped):
-                if i == 0: lines.append(f"• {w_line}") # Odrážka jen u prvního zalomení
-                else: lines.append(f"  {w_line}") # Odsazení u dalších řádků
-        
-        # Vypočítáme celkovou výšku textu
+                lines.append(f"• {w_line}" if i == 0 else f"  {w_line}")
         line_height = current_font_size * 1.3
-        total_height = len(lines) * line_height
-        
-        if total_height <= max_height:
-            break # Vešli jsme se, končíme hledání velikosti
-        current_font_size -= 2 # Zmenšíme písmo a zkusíme znovu
-
-    # Vykreslíme text
-    font = ImageFont.truetype(font_path, current_font_size)
-    line_height = current_font_size * 1.3
-    y_text = pos[1]
+        if len(lines) * line_height <= max_height: break
+        current_font_size -= 2
     
+    font = ImageFont.truetype(font_path, current_font_size)
+    y_text = pos[1]
     for line in lines:
-        # Použijeme barvu loga pro odrážky a černou pro text
-        if line.startswith("• "):
-            # Vykreslíme odrážku zeleně
-            draw.text((pos[0], y_text), "•", fill="#004D40", font=font)
-            # Vykreslíme text černě
-            draw.text((pos[0] + draw.textlength("• ", font=font), y_text), line[2:], fill="#333333", font=font)
-        else:
-            draw.text((pos[0], y_text), line, fill="#333333", font=font)
-        y_text += line_height
+        draw.text((pos[0], y_text), line, fill="#333333", font=font)
+        y_text += current_font_size * 1.3
 
-# --- CORE FUNKCE KRESLENÍ JEDNÉ CEDULKY ---
 def draw_label(name, img_plant, lines_text, font_bold, font_reg):
     A4_W, A4_H = 2480, 3508
     L_W, L_H = A4_W // 2, A4_H // 2
     lbl = Image.new('RGB', (L_W, L_H), 'white')
     d = ImageDraw.Draw(lbl)
-    
-    # 1. LOGO
     y = 60
     try:
         logo = Image.open("logo txt farma.JPG").convert("RGBA")
@@ -88,166 +92,128 @@ def draw_label(name, img_plant, lines_text, font_bold, font_reg):
         y += logo.height + 40
     except: y += 100
     
-    # 2. NÁZEV ODRŮDY (S dynamickým zmenšením, pokud je příliš dlouhý)
-    title_font_size = 115
-    f_t = ImageFont.truetype(font_bold, title_font_size)
-    while d.textlength(name.upper(), font=f_t) > (L_W - 100) and title_font_size > 60:
-        title_font_size -= 5
-        f_t = ImageFont.truetype(font_bold, title_font_size)
-        
+    f_t = ImageFont.truetype(font_bold, 115)
     d.text((L_W//2, y), name.upper(), fill="#004D40", anchor="mt", font=f_t)
-    y += f_t.getbbox(name.upper())[3] + 60 # Dynamická mezera podle výšky nadpisu
+    y += 180
     
-    # 3. FOTKA ROSTLINY
-    max_th = int(L_H * 0.40); max_tw = L_W - 200
     if img_plant:
+        max_th, max_tw = int(L_H * 0.40), L_W - 200
         w, h = img_plant.size
         ratio = min(max_tw/w, max_th/h)
         new_size = (int(w*ratio), int(h*ratio))
         resized_img = img_plant.resize(new_size, Image.Resampling.LANCZOS)
         lbl.paste(resized_img, ((L_W - new_size[0]) // 2, y))
         y += new_size[1] + 60
-    else:
-        y += max_th + 60 # Mezera, pokud fotka chybí
-
-    # 4. TECHNICKÉ PARAMETRY (Zalamovaný text s auto-size)
-    full_text = "\n".join(lines_text)
-    # Vymezený prostor pro text (od konce fotky po začátek ceny)
-    max_text_height = (L_H - 250) - y 
-    draw_text_box(d, full_text, (100, y), L_W - 200, max_text_height, font_reg, 48)
     
-    # 5. CENA BOX
-    bx_w, bx_h = 420, 160; bx_x, bx_y = (L_W - bx_w)//2, L_H - 220
-    d.rectangle([bx_x, bx_y, bx_x + bx_w, bx_y + bx_h], outline="#004D40", width=12)
-    d.text((bx_x + bx_w + 40, bx_y + 80), "Kč", fill="black", anchor="lm", font=ImageFont.truetype(font_bold, 100))
-    
-    # Přidáme jemný rámeček kolem celé cedulky pro ořez
-    d.rectangle([0, 0, L_W-1, L_H-1], outline="#EEEEEE", width=2)
-    
+    draw_text_box(d, "\n".join(lines_text), (100, y), L_W - 200, (L_H-250)-y, font_reg, 48)
+    bx_w, bx_h, bx_y = 420, 160, L_H - 220
+    d.rectangle([(L_W-bx_w)//2, bx_y, (L_W+bx_w)//2, bx_y+bx_h], outline="#004D40", width=12)
+    d.text(((L_W+bx_w)//2 + 40, bx_y + 80), "Kč", fill="black", anchor="lm", font=ImageFont.truetype(font_bold, 100))
     return lbl
 
-# --- STREAMLIT UI ---
-st.title("🌿 PRO Cedulkovač Farma - Perfektní Layout")
+# --- HLAVNÍ NAVIGACE ---
+tab1, tab2 = st.tabs(["🆕 Vytvořit / Upravit", "🗃️ Archiv uložených cedulek"])
 
-# Inicializace stavu
-if 'label_a4_preview' not in st.session_state: st.session_state.label_a4_preview = None
+with tab1:
+    st.title("🌿 Editor cedulek")
+    
+    # Pomocná funkce pro vyčištění polí
+    if 'edit_data' not in st.session_state:
+        st.session_state.edit_data = {"name": "", "r1": "", "r2": "", "r3": "", "r4": "", "img": None}
 
-# 1. KROK: ZADÁNÍ NÁZVU
-nazev = st.text_input("1. Zadejte název odrůdy (pro rešerši):", placeholder="např. Rajče Bejbino F1")
-
-if nazev:
-    st.markdown("---")
-    col_research, col_edit = st.columns([1, 1.2])
-
-    with col_research:
-        st.subheader("🔍 Rešerše a Foto")
-        q = nazev.replace(" ", "+")
+    col_l, col_r = st.columns([1, 1.2])
+    
+    with col_l:
+        st.subheader("🔍 Rešerše")
+        nazev_search = st.text_input("Zadejte název odrůdy:", value=st.session_state.edit_data["name"])
+        if nazev_search:
+            q = nazev_search.replace(" ", "+")
+            st.markdown(f"🔗 [Google CZ](https://google.cz/search?q={q}) | [IT]({q}+varieta) | [NL]({q}+ras) | [Obrázky](https://google.cz/search?tbm=isch&q={q}+fruit+macro)")
+            st.code(f"Jsi odborník. Najdi o odrůdě {nazev_search} tyto údaje: Ř1: Stanoviště... Ř2: Spon... Ř3: Plod... Ř4: Použití...", language="text")
         
-        # Mezinárodní odkazy (přeložené)
-        st.write("📖 **Technické informace (přeloženo do CZ):**")
+        uploaded_file = st.file_uploader("📸 Nahrát fotku:", type=["jpg", "png", "jpeg"])
+        if uploaded_file:
+            st.session_state.edit_data["img"] = Image.open(uploaded_file).convert("RGB")
+        elif st.session_state.edit_data["img"]:
+            st.image(st.session_state.edit_data["img"], width=150)
+
+    with col_r:
+        st.subheader("📝 Údaje cedulky")
+        ai_import = st.text_area("Vložit výstřižek z AI (volitelné):")
+        
+        # Parsování importu
+        d = st.session_state.edit_data
+        if ai_import:
+            for line in ai_import.split('\n'):
+                if "Ř1:" in line: d["r1"] = line.split("Ř1:")[1].strip()
+                elif "Ř2:" in line: d["r2"] = line.split("Ř2:")[1].strip()
+                elif "Ř3:" in line: d["r3"] = line.split("Ř3:")[1].strip()
+                elif "Ř4:" in line: d["r4"] = line.split("Ř4:")[1].strip()
+
+        final_name = st.text_input("NÁZEV NA CEDULECE:", value=nazev_search)
+        fr1 = st.text_input("Řádek 1:", value=d["r1"])
+        fr2 = st.text_input("Řádek 2:", value=d["r2"])
+        fr3 = st.text_input("Řádek 3:", value=d["r3"])
+        fr4 = st.text_input("Řádek 4:", value=d["r4"])
+
         c1, c2 = st.columns(2)
         with c1:
-            st.markdown(f"[🇮🇹 Itálie (Rajčata/Papriky)](https://translate.google.com/translate?sl=auto&tl=cs&u=https://www.google.com/search?q={q}+varieta+peso+sesto)")
-            st.markdown(f"[🇳🇱 Holandsko (Osiva)](https://translate.google.com/translate?sl=auto&tl=cs&u=https://www.google.com/search?q={q}+ras+kenmerken+plantafstand)")
+            if st.button("💾 ULOŽIT DO ARCHIVU", use_container_width=True):
+                if final_name and st.session_state.edit_data["img"]:
+                    save_to_archive(final_name, fr1, fr2, fr3, fr4, st.session_state.edit_data["img"])
+                    st.success("Uloženo!")
+                else: st.error("Chybí název nebo fotka!")
         with c2:
-            st.markdown(f"[🇩🇪 Německo (Bylinky)](https://translate.google.com/translate?sl=auto&tl=cs&u=https://www.google.com/search?q={q}+sorte+anbau+abstand)")
-            st.markdown(f"[🇭🇺 Maďarsko (Papriky)](https://translate.google.com/translate?sl=auto&tl=cs&u=https://www.google.com/search?q={q}+fajta+termesztes+tavolsag)")
-        
-        st.write("---")
-        st.subheader("📸 Fotografie")
-        st.markdown(f"👉 [Hledat Profi Fotky na Google Images] (https://www.google.com/search?tbm=isch&q={q}+fruit+detail+macro+white+background)")
-        
-        uploaded_file = st.file_uploader("2. Nahrajte fotku:", type=["jpg", "png", "jpeg"])
-        if uploaded_file:
-            st.image(uploaded_file, caption="Nahraný obrázek", width=200)
+            if st.button("🔄 NOVÁ (VYČISTIT)", use_container_width=True):
+                st.session_state.edit_data = {"name": "", "r1": "", "r2": "", "r3": "", "r4": "", "img": None}
+                st.rerun()
 
-    with col_edit:
-        st.subheader("📝 Import dat a Editace")
-        st.caption("Zkopírujte do své AI (Gemini/ChatGPT):")
-        prompt_text = f"Jsi odborník. Najdi o odrůdě {nazev} tyto údaje a vypiš je přesně takto:\nŘ1: Stanoviště: ... | Zálivka: ...\nŘ2: Spon: ... | Výška: ...\nŘ3: Plod: ... | Hmotnost: ...\nŘ4: Použití: ... | Tip: ..."
-        st.code(prompt_text, language="text")
+    # Náhled a PDF
+    if final_name and st.session_state.edit_data["img"]:
+        st.markdown("---")
+        f_b, f_r = get_czech_font("Bold"), get_czech_font("Regular")
+        lbl = draw_label(final_name, st.session_state.edit_data["img"], [fr1, fr2, fr3, fr4], f_b, f_r)
         
-        ai_data = st.text_area("3. Vložte odpověď od AI:", height=150)
+        canvas = Image.new('RGB', (2480, 3508), 'white')
+        for pos in [(0,0), (1240,0), (0,1754), (1240,1754)]: canvas.paste(lbl, pos)
         
-        # Logika automatického výcucu
-        r1, r2, r3, r4 = "", "", "", ""
-        if ai_data:
-            lines = ai_data.split('\n')
-            for line in lines:
-                if "Ř1:" in line: r1 = line.split("Ř1:")[1].strip()
-                elif "Ř2:" in line: r2 = line.split("Ř2:")[1].strip()
-                elif "Ř3:" in line: r3 = line.split("Ř3:")[1].strip()
-                elif "Ř4:" in line: r4 = line.split("Ř4:")[1].strip()
+        st.image(canvas, use_column_width=True)
+        pdf_buf = io.BytesIO()
+        canvas.save(pdf_buf, format="PDF")
+        st.download_button("📥 STÁHNOUT PDF K TISKU", pdf_buf.getvalue(), f"{clean_filename(final_name)}.pdf", type="primary")
 
-        st.write("---")
-        # Finální úprava názvu (nadpis)
-        edit_nazev = st.text_input("NÁZEV NA CEDULECE:", value=nazev if nazev else "")
-        
-        # Úprava 4 řádků technických parametrů (zde mohou být dlouhé texty)
-        edit_r1 = st.text_input("Řádek 1:", value=r1 if r1 else "Stanoviště: | Zálivka: ")
-        edit_r2 = st.text_input("Řádek 2:", value=r2 if r2 else "Spon: | Výška: ")
-        edit_r3 = st.text_input("Řádek 3:", value=r3 if r3 else "Plod: | Hmotnost: ")
-        # Zde často bývá dlouhý text (Tip, Použití)
-        edit_r4 = st.text_input("Řádek 4:", value=r4 if r4 else "Použití: | Tip: ")
-
-        st.write("---")
-        btn_preview = st.button("👁️ AKTUALIZOVAT NÁHLED TISKU", use_container_width=True)
-
-st.markdown("---")
-
-# --- GENERÁTOR A ZOBRAZENÍ NÁHLEDU ---
-if nazev and (uploaded_file or btn_preview):
-    with st.spinner('Generuji náhled tiskového archu A4...'):
-        # Fonty
-        f_bold = get_czech_font("Bold")
-        f_reg = get_czech_font("Regular")
-        
-        # Obrázek rostliny (ošetření pokud chybí)
-        try:
-            img_p = Image.open(uploaded_file).convert("RGB") if uploaded_file else None
-        except: img_p = None
-
-        # Sestavíme texty (ošetříme prázdné řádky)
-        final_lines = []
-        if edit_r1.strip() and edit_r1 != "Stanoviště: | Zálivka: ": final_lines.append(edit_r1)
-        if edit_r2.strip() and edit_r2 != "Spon: | Výška: ": final_lines.append(edit_r2)
-        if edit_r3.strip() and edit_r3 != "Plod: | Hmotnost: ": final_lines.append(edit_r3)
-        if edit_r4.strip() and edit_r4 != "Použití: | Tip: ": final_lines.append(edit_r4)
-        
-        # Pokud uživatel nic nevyplnil, dáme tam vzor
-        if not final_lines: final_lines = [edit_r1, edit_r2, edit_r3, edit_r4]
-
-        # Vytvoření jedné dokonalé cedulky
-        single_label = draw_label(edit_nazev, img_p, final_lines, f_bold, f_reg)
-        
-        # Vytvoření A4 archu
-        A4_W, A4_H = 2480, 3508
-        L_W, L_H = A4_W // 2, A4_H // 2
-        canvas = Image.new('RGB', (A4_W, A4_H), 'white')
-        
-        # Rozmístění 4 cedulek
-        canvas.paste(single_label, (0, 0))
-        canvas.paste(single_label, (L_W, 0))
-        canvas.paste(single_label, (0, L_H))
-        canvas.paste(single_label, (L_W, L_H))
-        
-        # Uložíme náhled do session state
-        st.session_state.label_a4_preview = canvas
-
-# Zobrazení náhledu, pokud existuje
-if st.session_state.label_a4_preview:
-    st.subheader("🖼️ Náhled tiskového archu A4")
-    st.image(st.session_state.label_a4_preview, use_column_width=True, caption="Takto bude vypadat vytištěná stránka.")
+with tab2:
+    st.title("🗃️ Správa archivu")
+    folders = sorted(os.listdir(DB_DIR))
     
-    # Tlačítko pro stažení PDF
-    buf = io.BytesIO()
-    st.session_state.label_a4_preview.save(buf, format="PDF")
+    if not folders:
+        st.info("Archiv je zatím prázdný. Vytvořte a uložte svou první cedulku.")
     
-    st.download_button(
-        label=f"📥 STÁHNOUT PDF K TISKU ({edit_nazev})",
-        data=buf.getvalue(),
-        file_name=f"{clean_filename(edit_nazev)}_A4.pdf",
-        mime="application/pdf",
-        type="primary",
-        use_container_width=True
-    )
+    for f in folders:
+        with st.expander(f"📁 {f.replace('_', ' ')}"):
+            col1, col2, col3 = st.columns([1, 3, 1])
+            data_path = os.path.join(DB_DIR, f, "data.json")
+            img_path = os.path.join(DB_DIR, f, "photo.jpg")
+            
+            if os.path.exists(data_path):
+                with open(data_path, "r", encoding="utf-8") as file:
+                    info = json.load(file)
+                
+                with col1:
+                    if os.path.exists(img_path):
+                        st.image(img_path, width=150)
+                with col2:
+                    st.write(f"**{info['name']}**")
+                    st.caption(f"{info['r1']} | {info['r2']}")
+                    st.caption(f"{info['r3']} | {info['r4']}")
+                with col3:
+                    if st.button("✏️ UPRAVIT", key=f"ed_{f}"):
+                        st.session_state.edit_data = {
+                            "name": info["name"], "r1": info["r1"], "r2": info["r2"], 
+                            "r3": info["r3"], "r4": info["r4"], 
+                            "img": Image.open(img_path) if os.path.exists(img_path) else None
+                        }
+                        st.rerun()
+                    if st.button("🗑️ SMAZAT", key=f"del_{f}"):
+                        delete_from_archive(f)
+                        st.rerun()
