@@ -45,19 +45,18 @@ def load_label_data(folder_name):
     img = Image.open(img_path) if os.path.exists(img_path) else None
     return data, img
 
-# PROFESIONÁLNÍ FUNKCE: Odstavec, barvy a zarovnání do bloku (od kraje ke kraji)
+# PROFESIONÁLNÍ FUNKCE: Odstavec, barvy, zarovnání do bloku a AUTO-SCALE
 def draw_justified_paragraph(d, text, start_x, start_y, max_w, max_h, font_bold_path, font_reg_path):
-    curr_size = 65
+    curr_size = 55 # Výchozí velikost (menší než dřív, aby bylo místo na fotku)
     best_size = curr_size
     lines_data = []
     
-    # Očištění textu (uděláme z oddělovačů samostatná slova)
     text = text.replace('|', ' | ')
     words_raw = text.split()
     if not words_raw: return
 
-    # KROK 1: Zkoušení velikosti písma, aby se odstavec vešel nad cenu
-    while curr_size >= 25:
+    # KROK 1: Měření a zmenšování (Garantuje, že text nepřejede přes cenu)
+    while curr_size >= 20:
         try:
             f_b = ImageFont.truetype(font_bold_path, curr_size) if font_bold_path else ImageFont.load_default()
             f_r = ImageFont.truetype(font_reg_path, curr_size) if font_reg_path else ImageFont.load_default()
@@ -69,7 +68,6 @@ def draw_justified_paragraph(d, text, start_x, start_y, max_w, max_h, font_bold_
         current_w = 0
         space_w = d.textlength(" ", font=f_r)
 
-        # Skládání slov na řádky
         for word in words_raw:
             f_curr = f_b if word.endswith(':') else f_r
             w_len = d.textlength(word, font=f_curr)
@@ -89,7 +87,7 @@ def draw_justified_paragraph(d, text, start_x, start_y, max_w, max_h, font_bold_
         if current_line:
             lines_data.append((current_line, current_w))
 
-        line_spacing = int(curr_size * 1.5) # Řádkování
+        line_spacing = int(curr_size * 1.5)
         total_h = len(lines_data) * line_spacing
 
         if total_h <= max_h:
@@ -97,12 +95,11 @@ def draw_justified_paragraph(d, text, start_x, start_y, max_w, max_h, font_bold_
             break
         curr_size -= 2
 
-    # KROK 2: Finální vykreslení a matematické roztažení mezer (Justify)
+    # KROK 2: Vykreslení
     y = start_y
     line_spacing = int(best_size * 1.5)
 
     for i, (line_words, line_w) in enumerate(lines_data):
-        # Poslední řádek odstavce se nezarovnává do bloku, ale doleva
         if len(line_words) == 1 or i == len(lines_data) - 1:
             x = start_x
             for word, font, w_len in line_words:
@@ -110,16 +107,15 @@ def draw_justified_paragraph(d, text, start_x, start_y, max_w, max_h, font_bold_
                 d.text((x, y), word, fill=fill, font=font)
                 x += w_len + d.textlength(" ", font=font)
         else:
-            # Zarovnání do bloku (rozdělení zbylého prázdného místa mezi slova)
             total_word_w = sum(w_len for _, _, w_len in line_words)
             total_space = max_w - total_word_w
-            gap = total_space / (len(line_words) - 1) # Velikost mezery pro tento konkrétní řádek
+            gap = total_space / (len(line_words) - 1)
 
             x = start_x
             for j, (word, font, w_len) in enumerate(line_words):
                 fill = "#004D40" if word.endswith(':') else ("#AAAAAA" if word == '|' else "#222222")
                 d.text((x, y), word, fill=fill, font=font)
-                x += w_len + gap # Skočíme na další pozici s vypočítanou mezerou
+                x += w_len + gap
                 
         y += line_spacing
 
@@ -138,17 +134,19 @@ def draw_label(name, img_plant, lines_text, font_bold, font_reg):
         y += logo.height + 40
     except: y += 100
     
-    title_size = 110
+    # Menší výchozí název (90) pro úsporu místa
+    title_size = 90
     f_t = ImageFont.truetype(font_bold, title_size) if font_bold else ImageFont.load_default()
-    while font_bold and d.textlength(name.upper(), font=f_t) > (L_W - 80) and title_size > 50:
+    while font_bold and d.textlength(name.upper(), font=f_t) > (L_W - 80) and title_size > 40:
         title_size -= 5
         f_t = ImageFont.truetype(font_bold, title_size)
         
     d.text((L_W//2, y), name.upper(), fill="#004D40", anchor="mt", font=f_t)
-    y += 150
+    y += int(title_size * 1.3) + 20 # Dynamická mezera podle velikosti názvu
     
     if img_plant:
-        max_th, max_tw = int(L_H * 0.33), L_W - 240
+        # VĚTŠÍ OBRÁZEK: Zabírá až 42 % výšky cedulky (předtím to bylo ~35 %)
+        max_th, max_tw = int(L_H * 0.42), L_W - 160 
         w, h = img_plant.size
         ratio = min(max_tw/w, max_th/h)
         new_size = (int(w*ratio), int(h*ratio))
@@ -159,17 +157,20 @@ def draw_label(name, img_plant, lines_text, font_bold, font_reg):
         pad = 12
         d.rectangle([img_x - pad, img_y - pad, img_x + new_size[0] + pad, img_y + new_size[1] + pad], outline="#004D40", width=4)
         lbl.paste(resized_img, (img_x, img_y))
-        y += new_size[1] + 80
         
-    # PŘÍPRAVA TEXTU A VYKRESLENÍ ODSTAVCE
+        y += new_size[1] + 50 # Těsnější okraj pod fotkou
+        
     valid_lines = [r.strip() for r in lines_text if r.strip() and not r.endswith(": | ")]
-    combined_text = " ".join(valid_lines) # Spojíme všechny řádky do jedné dlouhé věty
+    combined_text = " ".join(valid_lines)
     
-    max_text_height = (L_H - 240) - y # Maximální prostor nad cenovkou
+    # TVRDÝ MANTINEL PRO TEXT: Konec cedulky mínus výška ceny (220) mínus nějaká rezerva
+    price_y_start = L_H - 220
+    max_text_height = price_y_start - y - 20 # Změří přesně volné místo
+    
     draw_justified_paragraph(d, combined_text, 100, y, L_W - 200, max_text_height, font_bold, font_reg)
         
-    # CENA
-    bx_w, bx_h, bx_y = 420, 160, L_H - 220
+    # CENA (Zůstává na svém místě)
+    bx_w, bx_h, bx_y = 420, 160, price_y_start
     d.rectangle([(L_W-bx_w)//2, bx_y, (L_W+bx_w)//2, bx_y+bx_h], outline="#004D40", width=12)
     f_p = ImageFont.truetype(font_bold, 100) if font_bold else ImageFont.load_default()
     d.text(((L_W+bx_w)//2 + 40, bx_y + 80), "Kč", fill="black", anchor="lm", font=f_p)
