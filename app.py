@@ -105,17 +105,24 @@ def draw_label(name, img_plant, lines_text, font_bold, font_reg):
     d.rectangle([0, 0, L_W-1, L_H-1], outline="#EEEEEE", width=3)
     return lbl
 
-# --- 3. CENTRÁLNÍ BEZPEČNÁ PAMĚŤ (BEZ VAZBY NA KLÍČE) ---
-if 'active_label' not in st.session_state:
-    st.session_state.active_label = {
-        "name": "", "cat": "Ostatní", "img": None,
-        "r1": "Stanoviště: | Zálivka: ",
-        "r2": "Spon: | Výška: ",
-        "r3": "Plod: | Hmotnost: ",
-        "r4": "Použití: | Tip: "
-    }
-if 'upload_id' not in st.session_state: st.session_state.upload_id = str(uuid.uuid4())
-if 'raw_ai_input' not in st.session_state: st.session_state.raw_ai_input = ""
+# --- 3. NEPRŮSTŘELNÁ ZÁCHRANNÁ BRZDA PAMĚTI ---
+# Tato funkce zajistí, že aplikace nikdy nespadne, ani když uživatel zmáčkne "Reset app"
+def ensure_state():
+    if 'c_data' not in st.session_state:
+        st.session_state.c_data = {
+            "name": "", "cat": "Ostatní", "img": None,
+            "r1": "Stanoviště: | Zálivka: ",
+            "r2": "Spon: | Výška: ",
+            "r3": "Plod: | Hmotnost: ",
+            "r4": "Použití: | Tip: "
+        }
+    if 'c_up_key' not in st.session_state: 
+        st.session_state.c_up_key = str(uuid.uuid4())
+    if 'last_ai_text' not in st.session_state: 
+        st.session_state.last_ai_text = ""
+
+# Zavoláme záchrannou brzdu hned na začátku!
+ensure_state()
 
 # --- 4. APLIKACE A UI ---
 st.title("🌿 Farmářský Systém: Generátor Cedulek")
@@ -127,112 +134,102 @@ with tab1:
     with col_search:
         st.header("1. Zadání a Rešerše")
         
-        # POUŽITÍ POUZE VALUE (Bypass Streamlit chyby)
-        current_name = st.text_input("Název odrůdy:", value=st.session_state.active_label["name"])
-        st.session_state.active_label["name"] = current_name
+        new_name = st.text_input("Název odrůdy:", value=st.session_state.c_data["name"])
+        st.session_state.c_data["name"] = new_name
 
-        folder_check = clean_filename(current_name)
-        if current_name and os.path.exists(os.path.join(DB_DIR, folder_check)):
+        folder_check = clean_filename(new_name)
+        if new_name and os.path.exists(os.path.join(DB_DIR, folder_check)):
             st.warning("⚠️ Odrůda již v archivu existuje!")
             if st.button("📂 Načíst existující data z archivu", type="primary"):
-                # Bezpečné načtení starých dat
                 d, img = load_label_data(folder_check)
-                st.session_state.active_label.update({
-                    "name": d.get("name", ""),
-                    "cat": d.get("cat", "Ostatní"),
-                    "r1": d.get("r1", "Stanoviště: | Zálivka: "),
-                    "r2": d.get("r2", "Spon: | Výška: "),
-                    "r3": d.get("r3", "Plod: | Hmotnost: "),
-                    "r4": d.get("r4", "Použití: | Tip: "),
-                    "img": img
-                })
-                st.session_state.upload_id = str(uuid.uuid4())
+                st.session_state.c_data.update(d)
+                if "cat" not in st.session_state.c_data or st.session_state.c_data["cat"] not in KATEGORIE:
+                    st.session_state.c_data["cat"] = "Ostatní"
+                st.session_state.c_data["img"] = img
+                st.session_state.c_up_key = str(uuid.uuid4())
                 st.rerun()
 
-        if current_name:
+        if new_name:
             st.info("🤖 **Prompt pro AI (Zkopírujte):**")
-            ai_prompt = f"Jsi odborník. Najdi o odrůdě {current_name} tyto údaje.\n!!! KRITICKÁ PRAVIDLA:\n1. PIŠ EXTRÉMNĚ STRUČNĚ (max 6 slov na řádek).\n2. PIŠ LAICKY PRO BĚŽNÉHO SPOTŘEBITELE. VYNECH VŠECHNA CIZÍ NEBO ODBORNÁ SLOVA. !!!\nVypiš to přesně takto:\nŘ1: Stanoviště: ... | Zálivka: ...\nŘ2: Spon: ... | Výška: ...\nŘ3: Plod: ... | Hmotnost: ...\nŘ4: Použití: ... | Tip: ..."
+            ai_prompt = f"Jsi odborník. Najdi o odrůdě {new_name} tyto údaje.\n!!! KRITICKÁ PRAVIDLA:\n1. PIŠ EXTRÉMNĚ STRUČNĚ (max 6 slov na řádek).\n2. PIŠ LAICKY PRO BĚŽNÉHO SPOTŘEBITELE. VYNECH VŠECHNA CIZÍ NEBO ODBORNÁ SLOVA. !!!\nVypiš to přesně takto:\nŘ1: Stanoviště: ... | Zálivka: ...\nŘ2: Spon: ... | Výška: ...\nŘ3: Plod: ... | Hmotnost: ...\nŘ4: Použití: ... | Tip: ..."
             st.code(ai_prompt, language="text")
 
-            q = current_name.replace(" ", "+")
+            q = new_name.replace(" ", "+")
             st.markdown(f"🔍 [Obrázky Google](https://google.cz/search?tbm=isch&q={q}+fruit+macro+white+background) | [Data Itálie](https://translate.google.com/translate?sl=auto&tl=cs&u=https://www.google.com/search?q={q}+varieta+peso) | [Data Nizozemí](https://translate.google.com/translate?sl=auto&tl=cs&u=https://www.google.com/search?q={q}+ras+kenmerken)")
 
-        # Bezpečný výběr kategorie
-        cat_safe = st.session_state.active_label["cat"] if st.session_state.active_label["cat"] in KATEGORIE else "Ostatní"
-        cat_idx = KATEGORIE.index(cat_safe)
-        st.session_state.active_label["cat"] = st.selectbox("Kategorie pro uložení:", KATEGORIE, index=cat_idx)
+        cat_idx = KATEGORIE.index(st.session_state.c_data["cat"]) if st.session_state.c_data["cat"] in KATEGORIE else KATEGORIE.index("Ostatní")
+        st.session_state.c_data["cat"] = st.selectbox("Kategorie pro uložení:", KATEGORIE, index=cat_idx)
 
-        # Fotografie
-        uploaded_file = st.file_uploader("📸 Nahrát staženou fotku:", type=["jpg", "png", "jpeg"], key=st.session_state.upload_id)
+        uploaded_file = st.file_uploader("📸 Nahrát staženou fotku:", type=["jpg", "png", "jpeg"], key=st.session_state.c_up_key)
         if uploaded_file:
-            st.session_state.active_label["img"] = Image.open(uploaded_file).convert("RGB")
+            st.session_state.c_data["img"] = Image.open(uploaded_file).convert("RGB")
 
-        if st.session_state.active_label["img"]:
-            st.image(st.session_state.active_label["img"], width=180, caption="Aktuální fotka na cedulku")
+        if st.session_state.c_data["img"]:
+            st.image(st.session_state.c_data["img"], width=180, caption="Aktuální fotka na cedulku")
 
     with col_data:
         st.header("2. Obsah Cedulky")
 
-        # Zpracování AI textu
-        new_ai_input = st.text_area("Vložit výsledek z AI:", value=st.session_state.raw_ai_input, height=120)
-        if new_ai_input != st.session_state.raw_ai_input:
-            st.session_state.raw_ai_input = new_ai_input
-            clean_txt = new_ai_input.replace("**", "").replace("*", "")
-            for line in clean_txt.split('\n'):
-                if "Ř1:" in line: st.session_state.active_label["r1"] = line.split("Ř1:")[1].strip()[:65]
-                elif "Ř2:" in line: st.session_state.active_label["r2"] = line.split("Ř2:")[1].strip()[:65]
-                elif "Ř3:" in line: st.session_state.active_label["r3"] = line.split("Ř3:")[1].strip()[:65]
-                elif "Ř4:" in line: st.session_state.active_label["r4"] = line.split("Ř4:")[1].strip()[:65]
+        new_ai_text = st.text_area("Vložit výsledek z AI:", height=120, placeholder="Sem vložte text z Gemini...")
+        if new_ai_text and new_ai_text != st.session_state.last_ai_text:
+            st.session_state.last_ai_text = new_ai_text
+            clean_text = new_ai_text.replace("**", "").replace("*", "")
+            for line in clean_text.split('\n'):
+                if "Ř1:" in line: st.session_state.c_data["r1"] = line.split("Ř1:")[1].strip()[:65]
+                elif "Ř2:" in line: st.session_state.c_data["r2"] = line.split("Ř2:")[1].strip()[:65]
+                elif "Ř3:" in line: st.session_state.c_data["r3"] = line.split("Ř3:")[1].strip()[:65]
+                elif "Ř4:" in line: st.session_state.c_data["r4"] = line.split("Ř4:")[1].strip()[:65]
             st.rerun()
 
-        st.session_state.active_label["r1"] = st.text_input("Řádek 1:", value=st.session_state.active_label["r1"], max_chars=65)
-        st.session_state.active_label["r2"] = st.text_input("Řádek 2:", value=st.session_state.active_label["r2"], max_chars=65)
-        st.session_state.active_label["r3"] = st.text_input("Řádek 3:", value=st.session_state.active_label["r3"], max_chars=65)
-        st.session_state.active_label["r4"] = st.text_input("Řádek 4:", value=st.session_state.active_label["r4"], max_chars=65)
+        st.session_state.c_data["r1"] = st.text_input("Řádek 1 (Stanoviště/Zálivka):", value=st.session_state.c_data["r1"], max_chars=65)
+        st.session_state.c_data["r2"] = st.text_input("Řádek 2 (Spon/Výška):", value=st.session_state.c_data["r2"], max_chars=65)
+        st.session_state.c_data["r3"] = st.text_input("Řádek 3 (Plod/Hmotnost):", value=st.session_state.c_data["r3"], max_chars=65)
+        st.session_state.c_data["r4"] = st.text_input("Řádek 4 (Použití/Tip):", value=st.session_state.c_data["r4"], max_chars=65)
 
         st.markdown("<br>", unsafe_allow_html=True)
         col_btn1, col_btn2 = st.columns(2)
 
         with col_btn1:
             if st.button("💾 ULOŽIT DO SKLADU", use_container_width=True, type="primary"):
-                al = st.session_state.active_label
-                if al["name"] and al["img"]:
-                    p = os.path.join(DB_DIR, clean_filename(al["name"]))
+                d_name = st.session_state.c_data["name"]
+                d_img = st.session_state.c_data["img"]
+                if d_name and d_img:
+                    p = os.path.join(DB_DIR, clean_filename(d_name))
                     if not os.path.exists(p): os.makedirs(p)
                     d_out = {
-                        "name": al["name"], "cat": al["cat"],
-                        "r1": al["r1"], "r2": al["r2"], "r3": al["r3"], "r4": al["r4"]
+                        "name": d_name, "cat": st.session_state.c_data["cat"],
+                        "r1": st.session_state.c_data["r1"], "r2": st.session_state.c_data["r2"],
+                        "r3": st.session_state.c_data["r3"], "r4": st.session_state.c_data["r4"]
                     }
                     with open(os.path.join(p, "data.json"), "w", encoding="utf-8") as f:
                         json.dump(d_out, f, ensure_ascii=False)
-                    al["img"].save(os.path.join(p, "photo.jpg"), "JPEG")
-                    st.success("✅ Úspěšně uloženo do archivu!")
+                    d_img.save(os.path.join(p, "photo.jpg"), "JPEG")
+                    st.success("✅ Uloženo do databáze!")
                 else:
                     st.error("❌ Chybí název nebo fotka!")
 
         with col_btn2:
             if st.button("🔄 NOVÁ (VYČISTIT)", use_container_width=True):
-                st.session_state.active_label = {
+                st.session_state.c_data = {
                     "name": "", "cat": "Ostatní", "img": None,
                     "r1": "Stanoviště: | Zálivka: ", "r2": "Spon: | Výška: ",
                     "r3": "Plod: | Hmotnost: ", "r4": "Použití: | Tip: "
                 }
-                st.session_state.raw_ai_input = ""
-                st.session_state.upload_id = str(uuid.uuid4())
+                st.session_state.last_ai_text = ""
+                st.session_state.c_up_key = str(uuid.uuid4())
                 st.rerun()
 
     # --- NÁHLED A TISK ---
-    al = st.session_state.active_label
-    if al["name"] and al["img"]:
+    if st.session_state.c_data["name"] and st.session_state.c_data["img"]:
         st.markdown("---")
         st.subheader("🖨️ Náhled a Tisk (A4)")
         with st.spinner("Generuji arch..."):
             f_b, f_r = get_czech_font("Bold"), get_czech_font("Regular")
-            lines = [al["r1"], al["r2"], al["r3"], al["r4"]]
+            lines = [st.session_state.c_data["r1"], st.session_state.c_data["r2"], st.session_state.c_data["r3"], st.session_state.c_data["r4"]]
             valid_lines = [r for r in lines if r.strip() and not r.endswith(": | ")]
             if not valid_lines: valid_lines = lines
 
-            single_lbl = draw_label(al["name"], al["img"], valid_lines, f_b, f_r)
+            single_lbl = draw_label(st.session_state.c_data["name"], st.session_state.c_data["img"], valid_lines, f_b, f_r)
 
             canvas = Image.new('RGB', (2480, 3508), 'white')
             canvas.paste(single_lbl, (0, 0))
@@ -245,7 +242,7 @@ with tab1:
 
             pdf_buf = io.BytesIO()
             canvas.save(pdf_buf, format="PDF")
-            c_dl.download_button("📥 STÁHNOUT PDF K TISKU", pdf_buf.getvalue(), f"{clean_filename(al['name'])}_A4.pdf", mime="application/pdf", type="primary")
+            c_dl.download_button("📥 STÁHNOUT PDF K TISKU", pdf_buf.getvalue(), f"{clean_filename(st.session_state.c_data['name'])}_A4.pdf", mime="application/pdf", type="primary")
 
 # --- ZÁLOŽKA 2: ARCHIV ---
 with tab2:
@@ -274,17 +271,12 @@ with tab2:
 
                     if c3.button("✏️ Načíst do editoru", key=f"load_{f_name}"):
                         d, img = load_label_data(f_name)
-                        st.session_state.active_label.update({
-                            "name": d.get("name", ""),
-                            "cat": d.get("cat", "Ostatní"),
-                            "r1": d.get("r1", "Stanoviště: | Zálivka: "),
-                            "r2": d.get("r2", "Spon: | Výška: "),
-                            "r3": d.get("r3", "Plod: | Hmotnost: "),
-                            "r4": d.get("r4", "Použití: | Tip: "),
-                            "img": img
-                        })
-                        st.session_state.upload_id = str(uuid.uuid4())
-                        st.session_state.raw_ai_input = ""
+                        st.session_state.c_data.update(d)
+                        if "cat" not in st.session_state.c_data or st.session_state.c_data["cat"] not in KATEGORIE:
+                            st.session_state.c_data["cat"] = "Ostatní"
+                        st.session_state.c_data["img"] = img
+                        st.session_state.c_up_key = str(uuid.uuid4())
+                        st.session_state.last_ai_text = ""
                         st.rerun()
 
                     if c3.button("🗑️ Smazat", key=f"del_{f_name}", type="primary"):
