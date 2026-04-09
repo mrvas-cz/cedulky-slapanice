@@ -71,7 +71,7 @@ def draw_plant_pot_bottom(d, p_type, cx, cy, size):
     """Vykreslí květináč s rostlinou do levého dolního rohu"""
     pot_w = size * 0.4
     pot_h = size * 0.3
-    pot_y = cy # horní hrana květináče
+    pot_y = cy 
     
     # Květináč
     d.polygon([
@@ -96,12 +96,11 @@ def draw_plant_pot_bottom(d, p_type, cx, cy, size):
         d.line([(cx, pot_y), (cx-size*0.3, pot_y-size*0.1), (cx-size*0.4, pot_y+size*0.1)], fill="#4CAF50", width=10)
         d.ellipse([cx+size*0.4-15, pot_y, cx+size*0.4+15, pot_y+30], fill="#D81B60")
         d.ellipse([cx-size*0.4-15, pot_y, cx-size*0.4+15, pot_y+30], fill="#D81B60")
-    else: # Default
+    else: 
         d.ellipse([cx-30, pot_y-size*0.2, cx-5, pot_y-size*0.2+25], fill="#81C784")
         d.ellipse([cx+5, pot_y-size*0.3, cx+30, pot_y-size*0.3+25], fill="#81C784")
 
 def draw_justified_paragraph(d, text, start_x, start_y, max_w, max_h, font_bold, font_reg):
-    """Zarovná text do bloku a CHYTRĚ HO ZMENŠÍ, aby nikdy nepřejel cenu"""
     curr_size = 55 
     best_size = curr_size
     lines_data = []
@@ -201,17 +200,14 @@ def draw_label(name, img_plant, lines_text, shu_text, cat, font_bold, font_reg):
     
     # --- SPECIÁLNÍ ROZLOŽENÍ PRO KVĚTINY ---
     if cat == "Květiny":
-        # Ikony vlastností v jednom elegantním řádku pod názvem
         icon_y = y
         icon_size = 50
         f_icon_txt = ImageFont.truetype(font_reg, 45) if font_reg else ImageFont.load_default()
         
-        # Extrakce dat z textových polí (ignorujeme symboly dodané AI, uděláme si vlastní)
         kvet_txt = lines_text[1].split(":")[-1].replace("✿", "").strip() if len(lines_text) > 1 else ""
         slunce_txt = lines_text[2].split(":")[-1].replace("☀", "").replace("☁", "").strip() if len(lines_text) > 2 else ""
         voda_txt = lines_text[3].split(":")[-1].replace("💧", "").strip() if len(lines_text) > 3 else ""
         
-        # Vykreslení ikon vedle sebe s rovnoměrným rozestupem
         x_offsets = [L_W*0.2, L_W*0.5, L_W*0.8]
         items = [("Květ", kvet_txt), ("Stanoviště", slunce_txt), ("Zálivka", voda_txt)]
         
@@ -221,14 +217,14 @@ def draw_label(name, img_plant, lines_text, shu_text, cat, font_bold, font_reg):
                 draw_vector_icon(d, i_type, ix, icon_y, icon_size)
                 d.text((ix + icon_size + 15, icon_y + 5), txt, fill="#444444", font=f_icon_txt)
         
-        y += icon_size + 40 # Posuneme se pod ikony
+        y += icon_size + 40 
         
-        # TVRDÝ MANTINEL PRO SPODNÍ ČÁST (Cena a Květináč)
+        # TVRDÝ MANTINEL PRO SPODNÍ ČÁST 
         bottom_zone_y = L_H - 240
         
         # OBŘÍ FOTKA KVĚTINY
         if img_plant:
-            max_th = bottom_zone_y - y - 20 # Fotka zabere VŠECHNO volné místo!
+            max_th = bottom_zone_y - y - 20 
             max_tw = L_W - 160 
             w, h = img_plant.size
             ratio = min(max_tw/w, max_th/h)
@@ -242,7 +238,6 @@ def draw_label(name, img_plant, lines_text, shu_text, cat, font_bold, font_reg):
             lbl.paste(resized_img, (img_x, img_y))
         
         # SPODNÍ ZÓNA: VLEVO KVĚTINÁČ, VPRAVO CENA
-        # 1. Květináč
         growth_line = lines_text[0].lower() if lines_text else ""
         p_type = "neznámá"
         if "polopřevis" in growth_line or "poloprevis" in growth_line: p_type = "polopřevis"
@@ -253,18 +248,17 @@ def draw_label(name, img_plant, lines_text, shu_text, cat, font_bold, font_reg):
         pot_size = 180
         draw_plant_pot_bottom(d, p_type, pot_center_x, bottom_zone_y + 30, pot_size)
         
-        # Text pod květináčem (např. Převis 60 cm | Letnička)
         clean_growth = lines_text[0].replace("Vzrůst:", "").replace("Typ:", "").replace("⤵", "").replace("⬆", "").replace("↘", "").strip()
         f_growth = ImageFont.truetype(font_bold, 35) if font_bold else ImageFont.load_default()
         d.text((pot_center_x, bottom_zone_y + pot_size + 15), clean_growth, fill="#333333", anchor="mt", font=f_growth)
         
-        # 2. Box s cenou (přesunutý doprava)
-        bx_w, bx_h = 380, 150
-        bx_x = L_W - bx_w - 60
-        bx_y = bottom_zone_y + 20
-        d.rectangle([bx_x, bx_y, bx_x + bx_w, bx_y + bx_h], outline="#004D40", width=10)
-        f_p = ImageFont.truetype(font_bold, 95) if font_bold else ImageFont.load_default()
-        d.text((bx_x + bx_w//2 + 20, bx_y + 75), "Kč", fill="black", anchor="lm", font=f_p)
+        # 2. Box s cenou (ZVĚTŠENÝ!)
+        bx_w, bx_h = 460, 180
+        bx_x = L_W - bx_w - 50
+        bx_y = bottom_zone_y + 10
+        d.rectangle([bx_x, bx_y, bx_x + bx_w, bx_y + bx_h], outline="#004D40", width=12)
+        f_p = ImageFont.truetype(font_bold, 110) if font_bold else ImageFont.load_default()
+        d.text((bx_x + bx_w//2 + 30, bx_y + 90), "Kč", fill="black", anchor="lm", font=f_p)
 
     # --- STANDARDNÍ ROZLOŽENÍ PRO OSTATNÍ (Zelenina, Bylinky) ---
     else:
@@ -297,19 +291,19 @@ def draw_label(name, img_plant, lines_text, shu_text, cat, font_bold, font_reg):
         valid_lines = [r.strip() for r in lines_text if r.strip() and not r.endswith(": | ")]
         combined_text = " ".join(valid_lines)
         
-        price_y_start = L_H - 220
+        price_y_start = L_H - 240
         max_text_height = price_y_start - y - 20 
         
-        # Bezpečný odstavec s Auto-Škálováním
         draw_justified_paragraph(d, combined_text, 100, y, L_W - 200, max_text_height, font_bold, font_reg)
             
-        # Box s cenou uprostřed
-        bx_w, bx_h, bx_y = 420, 160, price_y_start
-        d.rectangle([(L_W-bx_w)//2, bx_y, (L_W+bx_w)//2, bx_y+bx_h], outline="#004D40", width=12)
-        f_p = ImageFont.truetype(font_bold, 100) if font_bold else ImageFont.load_default()
-        d.text(((L_W+bx_w)//2 + 40, bx_y + 80), "Kč", fill="black", anchor="lm", font=f_p)
+        # Box s cenou uprostřed (ZVĚTŠENÝ!)
+        bx_w, bx_h = 460, 180
+        bx_x = (L_W - bx_w) // 2
+        bx_y = price_y_start + 10
+        d.rectangle([bx_x, bx_y, bx_x + bx_w, bx_y + bx_h], outline="#004D40", width=12)
+        f_p = ImageFont.truetype(font_bold, 110) if font_bold else ImageFont.load_default()
+        d.text((bx_x + bx_w//2 + 40, bx_y + 90), "Kč", fill="black", anchor="lm", font=f_p)
 
-    # Rámeček celé cedulky
     d.rectangle([0, 0, L_W-1, L_H-1], outline="#EEEEEE", width=3)
     return lbl
 
@@ -529,7 +523,7 @@ with tab1:
             f_b, f_r = get_czech_font("Bold"), get_czech_font("Regular")
             lines = [get_current("r1"), get_current("r2"), get_current("r3"), get_current("r4")]
             
-            valid_lines = [r for r in lines if r.strip() and not r.endswith(": | ")]
+            valid_lines = [r for r in lines if r.strip() and not r.endswith(": | ") and r.strip() != "✿" and r.strip() != "☀" and r.strip() != "💧"]
             if not valid_lines: valid_lines = lines
 
             single_lbl = draw_label(c_name, c_img, valid_lines, c_shu, c_cat, f_b, f_r)
