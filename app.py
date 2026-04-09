@@ -198,34 +198,29 @@ def draw_label(name, img_plant, lines_text, shu_text, cat, font_bold, font_reg):
     d.text((L_W//2, y), name.upper(), fill="#004D40", anchor="mt", font=f_t)
     y += int(title_size * 1.3) + 10 
     
-    # --- SPECIÁLNÍ ROZLOŽENÍ PRO KVĚTINY ---
+    # --- SPECIÁLNÍ ROZLOŽENÍ PRO KVĚTINY (Pod sebou) ---
     if cat == "Květiny":
-        icon_y = y
-        icon_size = 50
-        f_icon_txt = ImageFont.truetype(font_reg, 45) if font_reg else ImageFont.load_default()
+        bottom_zone_y = L_H - 280 # Tvrdá linie, přes kterou nic nesmí
         
+        # 1. Připravíme si texty ikon, abychom věděli, kolik místa zaberou
         kvet_txt = lines_text[1].split(":")[-1].replace("✿", "").strip() if len(lines_text) > 1 else ""
         slunce_txt = lines_text[2].split(":")[-1].replace("☀", "").replace("☁", "").strip() if len(lines_text) > 2 else ""
         voda_txt = lines_text[3].split(":")[-1].replace("💧", "").strip() if len(lines_text) > 3 else ""
         
-        x_offsets = [L_W*0.2, L_W*0.5, L_W*0.8]
-        items = [("Květ", kvet_txt), ("Stanoviště", slunce_txt), ("Zálivka", voda_txt)]
+        items = []
+        if kvet_txt: items.append(("Květ", kvet_txt))
+        if slunce_txt: items.append(("Stanoviště", slunce_txt))
+        if voda_txt: items.append(("Zálivka", voda_txt))
         
-        for i, (i_type, txt) in enumerate(items):
-            if txt:
-                ix = int(x_offsets[i]) - 80
-                draw_vector_icon(d, i_type, ix, icon_y, icon_size)
-                d.text((ix + icon_size + 15, icon_y + 5), txt, fill="#444444", font=f_icon_txt)
+        icon_size = 70
+        icon_spacing = 30
+        total_icons_height = len(items) * (icon_size + icon_spacing)
         
-        y += icon_size + 40 
-        
-        # TVRDÝ MANTINEL PRO SPODNÍ ČÁST 
-        bottom_zone_y = L_H - 240
-        
-        # OBŘÍ FOTKA KVĚTINY
+        # 2. OBŘÍ FOTKA KVĚTINY (Přizpůsobí se místu nad ikonami)
         if img_plant:
-            max_th = bottom_zone_y - y - 20 
-            max_tw = L_W - 160 
+            # Fotka si vezme prostor mezi nadpisem a spodní zónou MÍNUS místo pro ikony
+            max_th = bottom_zone_y - y - total_icons_height - 30 
+            max_tw = L_W - 140 
             w, h = img_plant.size
             ratio = min(max_tw/w, max_th/h)
             new_size = (int(w*ratio), int(h*ratio))
@@ -236,8 +231,23 @@ def draw_label(name, img_plant, lines_text, shu_text, cat, font_bold, font_reg):
             pad = 12
             d.rectangle([img_x - pad, img_y - pad, img_x + new_size[0] + pad, img_y + new_size[1] + pad], outline="#004D40", width=4)
             lbl.paste(resized_img, (img_x, img_y))
+            y += new_size[1] + 40 # Posun pod fotku
+            
+        # 3. Ikony pod sebou (Sloupeček)
+        f_icon_txt = ImageFont.truetype(font_bold, 55) if font_bold else ImageFont.load_default()
+        icon_y = y
         
-        # SPODNÍ ZÓNA: VLEVO KVĚTINÁČ, VPRAVO CENA
+        for i_type, txt in items:
+            txt_w = d.textlength(txt, font=f_icon_txt)
+            total_w = icon_size + 25 + txt_w
+            start_x = (L_W - total_w) // 2 # Zaručí, že to bude krásně uprostřed
+            
+            draw_vector_icon(d, i_type, start_x, icon_y, icon_size)
+            # Zarovnáme text na střed ikony
+            d.text((start_x + icon_size + 25, icon_y + (icon_size//2)), txt, fill="#333333", anchor="lm", font=f_icon_txt)
+            icon_y += icon_size + icon_spacing
+        
+        # 4. SPODNÍ ZÓNA: VLEVO KVĚTINÁČ, VPRAVO CENA
         growth_line = lines_text[0].lower() if lines_text else ""
         p_type = "neznámá"
         if "polopřevis" in growth_line or "poloprevis" in growth_line: p_type = "polopřevis"
@@ -245,17 +255,23 @@ def draw_label(name, img_plant, lines_text, shu_text, cat, font_bold, font_reg):
         elif "vzpřímen" in growth_line or "vzprimen" in growth_line: p_type = "vzpřímená"
         
         pot_center_x = 240
-        pot_size = 180
-        draw_plant_pot_bottom(d, p_type, pot_center_x, bottom_zone_y + 30, pot_size)
+        pot_size = 200
+        # Květináč začíná níže, rostlina z něj roste nahoru (proto +60)
+        draw_plant_pot_bottom(d, p_type, pot_center_x, bottom_zone_y + 60, pot_size)
         
-        clean_growth = lines_text[0].replace("Vzrůst:", "").replace("Typ:", "").replace("⤵", "").replace("⬆", "").replace("↘", "").strip()
-        f_growth = ImageFont.truetype(font_bold, 35) if font_bold else ImageFont.load_default()
-        d.text((pot_center_x, bottom_zone_y + pot_size + 15), clean_growth, fill="#333333", anchor="mt", font=f_growth)
+        # Očištění prvního řádku pro hezký výpis pod květináčem
+        raw_growth = lines_text[0] if lines_text else ""
+        clean_growth = raw_growth.replace("Vzrůst:", "").replace("Typ:", "").replace("⤵", "").replace("⬆", "").replace("↘", "").strip()
+        if "|" in clean_growth:
+            clean_growth = " | ".join([p.strip() for p in clean_growth.split("|") if p.strip()])
+            
+        f_growth = ImageFont.truetype(font_bold, 38) if font_bold else ImageFont.load_default()
+        d.text((pot_center_x, bottom_zone_y + pot_size + 50), clean_growth, fill="#333333", anchor="mt", font=f_growth)
         
-        # 2. Box s cenou (ZVĚTŠENÝ!)
+        # Box s cenou
         bx_w, bx_h = 460, 180
         bx_x = L_W - bx_w - 50
-        bx_y = bottom_zone_y + 10
+        bx_y = bottom_zone_y + 30
         d.rectangle([bx_x, bx_y, bx_x + bx_w, bx_y + bx_h], outline="#004D40", width=12)
         f_p = ImageFont.truetype(font_bold, 110) if font_bold else ImageFont.load_default()
         d.text((bx_x + bx_w//2 + 30, bx_y + 90), "Kč", fill="black", anchor="lm", font=f_p)
@@ -296,7 +312,7 @@ def draw_label(name, img_plant, lines_text, shu_text, cat, font_bold, font_reg):
         
         draw_justified_paragraph(d, combined_text, 100, y, L_W - 200, max_text_height, font_bold, font_reg)
             
-        # Box s cenou uprostřed (ZVĚTŠENÝ!)
+        # Box s cenou uprostřed
         bx_w, bx_h = 460, 180
         bx_x = (L_W - bx_w) // 2
         bx_y = price_y_start + 10
