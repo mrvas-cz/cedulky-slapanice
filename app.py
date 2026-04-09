@@ -132,7 +132,8 @@ def draw_label(name, img_plant, lines_text, shu_text, cat, font_bold, font_reg):
         y += logo.height + 40
     except: y += 100
     
-    title_size = 90
+    # NÁZEV (Menší, aby ustoupil dominantnímu vizuálu)
+    title_size = 80
     f_t = ImageFont.truetype(font_bold, title_size) if font_bold else ImageFont.load_default()
     while font_bold and d.textlength(name.upper(), font=f_t) > (L_W - 80) and title_size > 40:
         title_size -= 5
@@ -153,9 +154,33 @@ def draw_label(name, img_plant, lines_text, shu_text, cat, font_bold, font_reg):
     else:
         y += 20 
     
+    # NOVÉ: DOMINANTNÍ VIZUÁL RŮSTU PRO KVĚTINY
+    if cat == "Květiny":
+        # Hledáme klíčová slova v prvním řádku textu
+        growth_line = lines_text[0].lower() if lines_text else ""
+        
+        # Výběr správné ikony
+        icon_path = None
+        if "převis" in growth_line or "previs" in growth_line: icon_path = "icon_previs.png"
+        elif "polopřevis" in growth_line or "poloprevis" in growth_line: icon_path = "icon_poloprevis.png"
+        elif "vzpřímená" in growth_line or "vzprimena" in growth_line: icon_path = "icon_vzprimena.png"
+        
+        if icon_path and os.path.exists(icon_path):
+            growth_icon = Image.open(icon_path).convert("RGBA")
+            iw = 350 # Ikona bude velká a dominantní
+            growth_icon = growth_icon.resize((iw, int(iw * (growth_icon.height / growth_icon.width))), Image.Resampling.LANCZOS)
+            lbl.paste(growth_icon, ((L_W - iw) // 2, y), growth_icon)
+            y += growth_icon.height + 20
+            
+            # Text o vzrůstu pod ikonou uděláme menší a kompaktnější
+            f_g = ImageFont.truetype(font_reg, 40) if font_reg else ImageFont.load_default()
+            d.text((L_W//2, y), lines_text[0], fill="#555555", anchor="mt", font=f_g)
+            y += 60
+            lines_text = lines_text[1:] # Odstraníme první řádek, už je vykreslen vizuálně
+            
+    # FOTKA (Zvětšená na absolutní maximum, protože jsme ušetřili místo vizuálem)
     if img_plant:
-        # OBŘÍ OBRÁZEK PRO KVĚTINY (Úspora textu symbolem)
-        if cat == "Květiny": img_scale = 0.46
+        if cat == "Květiny": img_scale = 0.52 # OBRÁZEK KVĚTINY BUDE OBŘÍ
         elif shu_text and shu_text.strip(): img_scale = 0.38
         else: img_scale = 0.42
             
@@ -217,7 +242,8 @@ def apply_template(cat):
         st.session_state.d["r3"] = "Typ: | Sběr: "
         st.session_state.d["r4"] = "Použití: | Tip: "
     elif cat == "Květiny":
-        st.session_state.d["r1"] = "Tvar: | Životnost: "
+        # První řádek je speciální pro Vizuální Vykreslení
+        st.session_state.d["r1"] = "Vzrůst: [Převis/Polopřevis/Vzpřímená] 60 cm | Typ: [Letnička/Trvalka]"
         st.session_state.d["r2"] = "✿ Květ: "
         st.session_state.d["r3"] = "☀ Stanoviště: "
         st.session_state.d["r4"] = "💧 Zálivka: "
@@ -263,7 +289,7 @@ with tab1:
             if matched_cat and st.session_state.d.get("cat") != matched_cat:
                 sync_to_d() 
                 st.session_state.d["cat"] = matched_cat
-                apply_template(matched_cat) # Automaticky přepíše řádky podle toho, o co jde
+                apply_template(matched_cat)
                 st.session_state.form_key = str(uuid.uuid4())
                 st.rerun()
         
@@ -294,14 +320,14 @@ with tab1:
         if curr_name:
             st.info("🤖 **Prompt pro AI (Zkopírujte):**")
             
-            # CHYTRÝ PROMPT DLE KATEGORIE
             cat = st.session_state.d["cat"]
             if cat == "Papriky - Pálivé":
                 specifics = "Ř1: Stanoviště: ... | Zálivka: ...\nŘ2: Spon: ... | Výška: ...\nŘ3: Plod: ... | Hmotnost: ...\nŘ4: Použití: ... | Tip: ...\nŘ5: Pálivost: [Slovní popis, např. Extrémně pálivá] | SHU: [Číslo]"
             elif cat == "Bylinky":
                 specifics = "Ř1: Stanoviště: ... | Zálivka: ...\nŘ2: Spon: ... | Výška: ...\nŘ3: Typ: [Trvalka/Letnička] | Sběr: [Květen - Září]\nŘ4: Použití: ... | Tip: ..."
             elif cat == "Květiny":
-                specifics = "Ř1: Tvar: [Převis/Polopřevis/Vzpřímená] | Životnost: [Letnička/Trvalka/Dvouletka]\nŘ2: ✿ [Měsíce kvetení římsky, např. V-IX]\nŘ3: ☀ [Slunné] nebo ☁ [Stinné]\nŘ4: 💧💧💧 [Hojná zálivka] nebo 💧 [Mírná]"
+                # AI musí přesně trefit klíčová slova pro vizuál
+                specifics = "Ř1: Vzrůst: [Přesně klíčové slovo: Převis nebo Polopřevis nebo Vzpřímená] [Délka v cm, např. 60 cm] | Typ: [Letnička/Trvalka]\nŘ2: ✿ [Měsíce kvetení římsky, např. V-IX]\nŘ3: ☀ [Slunné] nebo ☁ [Stinné]\nŘ4: 💧💧💧 [Hojná zálivka] nebo 💧 [Mírná]"
             else:
                 specifics = "Ř1: Stanoviště: ... | Zálivka: ...\nŘ2: Spon: ... | Výška: ...\nŘ3: Plod: ... | Hmotnost: ...\nŘ4: Použití: ... | Tip: ..."
 
@@ -346,9 +372,8 @@ with tab1:
         else:
             st.session_state.d["shu"] = get_current("shu")
         
-        # Dynamické názvy řádků v editoru podle toho, co jsme vybrali
         c = st.session_state.d["cat"]
-        lbl_r1 = "Řádek 1 (Tvar/Životnost):" if c == "Květiny" else "Řádek 1 (Stanoviště/Zálivka):"
+        lbl_r1 = "Řádek 1 (Vzrůst - klíčové slovo Převis/Vzpřímená!):" if c == "Květiny" else "Řádek 1 (Stanoviště/Zálivka):"
         lbl_r2 = "Řádek 2 (Květ):" if c == "Květiny" else "Řádek 2 (Spon/Výška):"
         lbl_r3 = "Řádek 3 (Stanoviště):" if c == "Květiny" else ("Řádek 3 (Typ/Sběr):" if c == "Bylinky" else "Řádek 3 (Plod/Hmotnost):")
         lbl_r4 = "Řádek 4 (Zálivka):" if c == "Květiny" else "Řádek 4 (Použití/Tip):"
@@ -406,6 +431,7 @@ with tab1:
             f_b, f_r = get_czech_font("Bold"), get_czech_font("Regular")
             lines = [get_current("r1"), get_current("r2"), get_current("r3"), get_current("r4")]
             
+            # Pro kytky v náhledu schováme ty řídicí symboly ✿, ☀, 💧, uživatel je vidí v editoru
             valid_lines = [r for r in lines if r.strip() and not r.endswith(": | ") and r.strip() != "✿" and r.strip() != "☀" and r.strip() != "💧"]
             if not valid_lines: valid_lines = lines
 
