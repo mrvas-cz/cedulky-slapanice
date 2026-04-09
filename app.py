@@ -23,69 +23,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 2. GRAFICKÉ FUNKCE: VEKTOROVÉ IKONY ---
-SPECIAL_CHARS = ["✿", "☀", "☁", "💧"]
-
-def draw_inline_icon(d, char, x, y, size):
-    """Kreslí vektorové ikony přímo do textu (100% garance tisku)"""
-    if char == "✿":
-        c = size // 2; r = size // 3
-        d.ellipse([x+c-r, y+c-2*r, x+c+r, y+c], fill="#F48FB1")
-        d.ellipse([x+c-r, y+c, x+c+r, y+c+2*r], fill="#F48FB1")
-        d.ellipse([x+c-2*r, y+c-r, x+c, y+c+r], fill="#F48FB1")
-        d.ellipse([x+c, y+c-r, x+c+2*r, y+c+r], fill="#F48FB1")
-        d.ellipse([x+c-r//2, y+c-r//2, x+c+r//2, y+c+r//2], fill="#FFF59D")
-    elif char == "☀":
-        pad = size // 5
-        d.ellipse([x+pad, y+pad, x+size-pad, y+size-pad], fill="#FFB300")
-        c = size//2
-        d.line([(x+c, y), (x+c, y+size)], fill="#FFB300", width=3)
-        d.line([(x, y+c), (x+size, y+c)], fill="#FFB300", width=3)
-    elif char == "☁":
-        d.ellipse([x, y+size//2, x+size//2, y+size], fill="#90A4AE")
-        d.ellipse([x+size//4, y+size//4, x+size*3//4, y+size], fill="#90A4AE")
-        d.ellipse([x+size//2, y+size//2, x+size, y+size], fill="#90A4AE")
-    elif char == "💧":
-        c = x + size//2
-        d.polygon([(c, y+size//6), (x+size//4, y+size*3//4), (x+size*3//4, y+size*3//4)], fill="#29B6F6")
-        d.ellipse([x+size//4, y+size//2, x+size*3//4, y+size], fill="#29B6F6")
-
-def draw_plant_icon(d, p_type, cx, cy, size):
-    """Kreslí velký květináč a ukazuje chování kytky"""
-    pot_w = size * 0.45
-    pot_h = size * 0.35
-    pot_y = cy + size * 0.5 
-    
-    # Květináč
-    d.polygon([
-        (cx - pot_w/2, pot_y), 
-        (cx + pot_w/2, pot_y), 
-        (cx + pot_w/2 - 15, pot_y + pot_h), 
-        (cx - pot_w/2 + 15, pot_y + pot_h)
-    ], fill="#8D6E63")
-    d.rectangle([cx - pot_w/2 - 10, pot_y, cx + pot_w/2 + 10, pot_y + 15], fill="#5D4037")
-    
-    # Stonek a listy podle typu
-    d.line([(cx, pot_y), (cx, pot_y - size*0.4)], fill="#43A047", width=12) 
-    
-    if p_type == "vzpřímená":
-        d.ellipse([cx-40, pot_y-size*0.2, cx-5, pot_y-size*0.2+35], fill="#66BB6A")
-        d.ellipse([cx+5, pot_y-size*0.3, cx+40, pot_y-size*0.3+35], fill="#66BB6A")
-        d.ellipse([cx-25, pot_y-size*0.45, cx+25, pot_y-size*0.45+50], fill="#E91E63") 
-    elif p_type == "převis":
-        d.line([(cx, pot_y), (cx+size*0.4, pot_y-size*0.1), (cx+size*0.5, pot_y+size*0.4)], fill="#43A047", width=10)
-        d.line([(cx, pot_y), (cx-size*0.4, pot_y-size*0.1), (cx-size*0.5, pot_y+size*0.5)], fill="#43A047", width=10)
-        d.ellipse([cx+size*0.5-20, pot_y+size*0.2, cx+size*0.5+20, pot_y+size*0.2+40], fill="#E91E63")
-        d.ellipse([cx-size*0.5-20, pot_y+size*0.3, cx-size*0.5+20, pot_y+size*0.3+40], fill="#E91E63")
-    elif p_type == "polopřevis":
-        d.line([(cx, pot_y), (cx+size*0.4, pot_y-size*0.1), (cx+size*0.45, pot_y+size*0.15)], fill="#43A047", width=10)
-        d.line([(cx, pot_y), (cx-size*0.4, pot_y-size*0.1), (cx-size*0.45, pot_y+size*0.15)], fill="#43A047", width=10)
-        d.ellipse([cx+size*0.45-20, pot_y+size*0.05, cx+size*0.45+20, pot_y+size*0.05+40], fill="#E91E63")
-        d.ellipse([cx-size*0.45-20, pot_y+size*0.05, cx-size*0.45+20, pot_y+size*0.05+40], fill="#E91E63")
-    else:
-        d.ellipse([cx-30, pot_y-size*0.2, cx-5, pot_y-size*0.2+25], fill="#66BB6A")
-        d.ellipse([cx+5, pot_y-size*0.3, cx+30, pot_y-size*0.3+25], fill="#66BB6A")
-
+# --- 2. GRAFICKÉ FUNKCE A VEKTOROVÉ IKONY ---
 @st.cache_resource
 def get_czech_font(font_type="Bold"):
     file_name = f"Roboto-{font_type}.ttf"
@@ -107,7 +45,63 @@ def load_label_data(folder_name):
     img = Image.open(img_path) if os.path.exists(img_path) else None
     return data, img
 
-def draw_justified_paragraph(d, text, start_x, start_y, max_w, max_h, font_bold_path, font_reg_path):
+def draw_vector_icon(d, icon_type, x, y, size):
+    """Vykreslí barevné vektorové ikony zaručeně fungující v tisku"""
+    if icon_type == "Květ":
+        c = size // 2; r = size // 3
+        d.ellipse([x+c-r, y+c-2*r, x+c+r, y+c], fill="#EC407A")
+        d.ellipse([x+c-r, y+c, x+c+r, y+c+2*r], fill="#EC407A")
+        d.ellipse([x+c-2*r, y+c-r, x+c, y+c+r], fill="#EC407A")
+        d.ellipse([x+c, y+c-r, x+c+2*r, y+c+r], fill="#EC407A")
+        d.ellipse([x+c-r//2, y+c-r//2, x+c+r//2, y+c+r//2], fill="#FFEE58")
+    elif icon_type == "Stanoviště":
+        pad = size // 5
+        d.ellipse([x+pad, y+pad, x+size-pad, y+size-pad], fill="#FFA000")
+        c = size//2
+        d.line([(x+c, y), (x+c, y+size)], fill="#FFA000", width=4)
+        d.line([(x, y+c), (x+size, y+c)], fill="#FFA000", width=4)
+        d.line([(x+pad, y+pad), (x+size-pad, y+size-pad)], fill="#FFA000", width=4)
+        d.line([(x+pad, y+size-pad), (x+size-pad, y+pad)], fill="#FFA000", width=4)
+    elif icon_type == "Zálivka":
+        c = x + size//2
+        d.polygon([(c, y+size//6), (x+size//4, y+size*3//4), (x+size*3//4, y+size*3//4)], fill="#29B6F6")
+        d.ellipse([x+size//4, y+size//2, x+size*3//4, y+size], fill="#29B6F6")
+
+def draw_plant_pot_bottom(d, p_type, cx, cy, size):
+    """Vykreslí květináč s rostlinou do levého dolního rohu"""
+    pot_w = size * 0.4
+    pot_h = size * 0.3
+    pot_y = cy # horní hrana květináče
+    
+    # Květináč
+    d.polygon([
+        (cx - pot_w/2, pot_y), (cx + pot_w/2, pot_y), 
+        (cx + pot_w/2 - 10, pot_y + pot_h), (cx - pot_w/2 + 10, pot_y + pot_h)
+    ], fill="#8D6E63")
+    d.rectangle([cx - pot_w/2 - 8, pot_y, cx + pot_w/2 + 8, pot_y + 12], fill="#5D4037")
+    
+    # Rostlina
+    if p_type == "vzpřímená":
+        d.line([(cx, pot_y), (cx, pot_y - size*0.45)], fill="#4CAF50", width=12) 
+        d.ellipse([cx-35, pot_y-size*0.3, cx-5, pot_y-size*0.3+30], fill="#81C784")
+        d.ellipse([cx+5, pot_y-size*0.4, cx+35, pot_y-size*0.4+30], fill="#81C784")
+        d.ellipse([cx-25, pot_y-size*0.6, cx+25, pot_y-size*0.6+50], fill="#D81B60") 
+    elif p_type == "převis":
+        d.line([(cx, pot_y), (cx+size*0.3, pot_y-size*0.1), (cx+size*0.4, pot_y+size*0.4)], fill="#4CAF50", width=10)
+        d.line([(cx, pot_y), (cx-size*0.3, pot_y-size*0.1), (cx-size*0.4, pot_y+size*0.4)], fill="#4CAF50", width=10)
+        d.ellipse([cx+size*0.4-20, pot_y+size*0.2, cx+size*0.4+20, pot_y+size*0.2+40], fill="#D81B60")
+        d.ellipse([cx-size*0.4-20, pot_y+size*0.2, cx-size*0.4+20, pot_y+size*0.2+40], fill="#D81B60")
+    elif p_type == "polopřevis":
+        d.line([(cx, pot_y), (cx+size*0.3, pot_y-size*0.1), (cx+size*0.4, pot_y+size*0.1)], fill="#4CAF50", width=10)
+        d.line([(cx, pot_y), (cx-size*0.3, pot_y-size*0.1), (cx-size*0.4, pot_y+size*0.1)], fill="#4CAF50", width=10)
+        d.ellipse([cx+size*0.4-15, pot_y, cx+size*0.4+15, pot_y+30], fill="#D81B60")
+        d.ellipse([cx-size*0.4-15, pot_y, cx-size*0.4+15, pot_y+30], fill="#D81B60")
+    else: # Default
+        d.ellipse([cx-30, pot_y-size*0.2, cx-5, pot_y-size*0.2+25], fill="#81C784")
+        d.ellipse([cx+5, pot_y-size*0.3, cx+30, pot_y-size*0.3+25], fill="#81C784")
+
+def draw_justified_paragraph(d, text, start_x, start_y, max_w, max_h, font_bold, font_reg):
+    """Zarovná text do bloku a CHYTRĚ HO ZMENŠÍ, aby nikdy nepřejel cenu"""
     curr_size = 55 
     best_size = curr_size
     lines_data = []
@@ -116,13 +110,9 @@ def draw_justified_paragraph(d, text, start_x, start_y, max_w, max_h, font_bold_
     words_raw = text.split()
     if not words_raw: return
 
-    # Měření s ohledem na ikony
     while curr_size >= 20:
-        try:
-            f_b = ImageFont.truetype(font_bold_path, curr_size) if font_bold_path else ImageFont.load_default()
-            f_r = ImageFont.truetype(font_reg_path, curr_size) if font_reg_path else ImageFont.load_default()
-        except:
-            f_b = ImageFont.load_default(); f_r = ImageFont.load_default()
+        f_b = ImageFont.truetype(font_bold, curr_size) if font_bold else ImageFont.load_default()
+        f_r = ImageFont.truetype(font_reg, curr_size) if font_reg else ImageFont.load_default()
             
         lines_data = []
         current_line = []
@@ -131,10 +121,7 @@ def draw_justified_paragraph(d, text, start_x, start_y, max_w, max_h, font_bold_
 
         for word in words_raw:
             f_curr = f_b if word.endswith(':') else f_r
-            w_len = 0
-            for char in word:
-                if char in SPECIAL_CHARS: w_len += curr_size
-                else: w_len += d.textlength(char, font=f_curr)
+            w_len = d.textlength(word, font=f_curr)
 
             if not current_line:
                 current_line.append((word, f_curr, w_len))
@@ -148,47 +135,40 @@ def draw_justified_paragraph(d, text, start_x, start_y, max_w, max_h, font_bold_
                     current_line = [(word, f_curr, w_len)]
                     current_w = w_len
 
-        if current_line: lines_data.append((current_line, current_w))
+        if current_line:
+            lines_data.append((current_line, current_w))
 
         line_spacing = int(curr_size * 1.5)
-        if len(lines_data) * line_spacing <= max_h:
+        total_h = len(lines_data) * line_spacing
+
+        if total_h <= max_h:
             best_size = curr_size
             break
         curr_size -= 2
 
-    # Vykreslení s ikonami
     y = start_y
     line_spacing = int(best_size * 1.5)
+    f_b = ImageFont.truetype(font_bold, best_size) if font_bold else ImageFont.load_default()
+    f_r = ImageFont.truetype(font_reg, best_size) if font_reg else ImageFont.load_default()
 
     for i, (line_words, line_w) in enumerate(lines_data):
         if len(line_words) == 1 or i == len(lines_data) - 1:
             x = start_x
-            for word, font, w_len in line_words:
+            for word, _, w_len in line_words:
+                font = f_b if word.endswith(':') else f_r
                 fill = "#004D40" if word.endswith(':') else ("#AAAAAA" if word == '|' else "#222222")
-                for char in word:
-                    if char in SPECIAL_CHARS:
-                        draw_inline_icon(d, char, x, y + line_spacing//8, int(best_size * 0.8))
-                        x += best_size
-                    else:
-                        d.text((x, y), char, fill=fill, font=font)
-                        x += d.textlength(char, font=font)
-                x += d.textlength(" ", font=font)
+                d.text((x, y), word, fill=fill, font=font)
+                x += w_len + d.textlength(" ", font=font)
         else:
             total_word_w = sum(w_len for _, _, w_len in line_words)
             total_space = max_w - total_word_w
             gap = total_space / (len(line_words) - 1)
 
             x = start_x
-            for word, font, w_len in line_words:
+            for j, (word, _, w_len) in enumerate(line_words):
+                font = f_b if word.endswith(':') else f_r
                 fill = "#004D40" if word.endswith(':') else ("#AAAAAA" if word == '|' else "#222222")
-                x_curr = x
-                for char in word:
-                    if char in SPECIAL_CHARS:
-                        draw_inline_icon(d, char, x_curr, y + line_spacing//8, int(best_size * 0.8))
-                        x_curr += best_size
-                    else:
-                        d.text((x_curr, y), char, fill=fill, font=font)
-                        x_curr += d.textlength(char, font=font)
+                d.text((x, y), word, fill=fill, font=font)
                 x += w_len + gap
                 
         y += line_spacing
@@ -199,6 +179,7 @@ def draw_label(name, img_plant, lines_text, shu_text, cat, font_bold, font_reg):
     lbl = Image.new('RGB', (L_W, L_H), 'white')
     d = ImageDraw.Draw(lbl)
     
+    # 1. LOGO
     y = 60
     try:
         logo = Image.open("logo txt farma.JPG").convert("RGBA")
@@ -208,7 +189,7 @@ def draw_label(name, img_plant, lines_text, shu_text, cat, font_bold, font_reg):
         y += logo.height + 40
     except: y += 100
     
-    # NÁZEV 
+    # 2. NÁZEV ODRŮDY
     title_size = 85
     f_t = ImageFont.truetype(font_bold, title_size) if font_bold else ImageFont.load_default()
     while font_bold and d.textlength(name.upper(), font=f_t) > (L_W - 80) and title_size > 40:
@@ -218,73 +199,121 @@ def draw_label(name, img_plant, lines_text, shu_text, cat, font_bold, font_reg):
     d.text((L_W//2, y), name.upper(), fill="#004D40", anchor="mt", font=f_t)
     y += int(title_size * 1.3) + 10 
     
-    if shu_text and shu_text.strip():
-        shu_size = 70
-        f_shu = ImageFont.truetype(font_bold, shu_size) if font_bold else ImageFont.load_default()
-        while font_bold and d.textlength(shu_text.upper(), font=f_shu) > (L_W - 100) and shu_size > 30:
-            shu_size -= 5
-            f_shu = ImageFont.truetype(font_bold, shu_size)
+    # --- SPECIÁLNÍ ROZLOŽENÍ PRO KVĚTINY ---
+    if cat == "Květiny":
+        # Ikony vlastností v jednom elegantním řádku pod názvem
+        icon_y = y
+        icon_size = 50
+        f_icon_txt = ImageFont.truetype(font_reg, 45) if font_reg else ImageFont.load_default()
+        
+        # Extrakce dat z textových polí (ignorujeme symboly dodané AI, uděláme si vlastní)
+        kvet_txt = lines_text[1].split(":")[-1].replace("✿", "").strip() if len(lines_text) > 1 else ""
+        slunce_txt = lines_text[2].split(":")[-1].replace("☀", "").replace("☁", "").strip() if len(lines_text) > 2 else ""
+        voda_txt = lines_text[3].split(":")[-1].replace("💧", "").strip() if len(lines_text) > 3 else ""
+        
+        # Vykreslení ikon vedle sebe s rovnoměrným rozestupem
+        x_offsets = [L_W*0.2, L_W*0.5, L_W*0.8]
+        items = [("Květ", kvet_txt), ("Stanoviště", slunce_txt), ("Zálivka", voda_txt)]
+        
+        for i, (i_type, txt) in enumerate(items):
+            if txt:
+                ix = int(x_offsets[i]) - 80
+                draw_vector_icon(d, i_type, ix, icon_y, icon_size)
+                d.text((ix + icon_size + 15, icon_y + 5), txt, fill="#444444", font=f_icon_txt)
+        
+        y += icon_size + 40 # Posuneme se pod ikony
+        
+        # TVRDÝ MANTINEL PRO SPODNÍ ČÁST (Cena a Květináč)
+        bottom_zone_y = L_H - 240
+        
+        # OBŘÍ FOTKA KVĚTINY
+        if img_plant:
+            max_th = bottom_zone_y - y - 20 # Fotka zabere VŠECHNO volné místo!
+            max_tw = L_W - 160 
+            w, h = img_plant.size
+            ratio = min(max_tw/w, max_th/h)
+            new_size = (int(w*ratio), int(h*ratio))
+            resized_img = img_plant.resize(new_size, Image.Resampling.LANCZOS)
             
-        d.text((L_W//2, y), shu_text.upper(), fill="#D32F2F", anchor="mt", font=f_shu) 
-        y += int(shu_size * 1.3) + 10 
-    
-    # SPECIÁLNÍ IKONA PRO KVĚTINY
-    if cat == "Květiny" and lines_text:
-        growth_line = lines_text[0].lower()
+            img_x = (L_W - new_size[0]) // 2
+            img_y = y
+            pad = 12
+            d.rectangle([img_x - pad, img_y - pad, img_x + new_size[0] + pad, img_y + new_size[1] + pad], outline="#004D40", width=4)
+            lbl.paste(resized_img, (img_x, img_y))
+        
+        # SPODNÍ ZÓNA: VLEVO KVĚTINÁČ, VPRAVO CENA
+        # 1. Květináč
+        growth_line = lines_text[0].lower() if lines_text else ""
         p_type = "neznámá"
         if "polopřevis" in growth_line or "poloprevis" in growth_line: p_type = "polopřevis"
         elif "převis" in growth_line or "previs" in growth_line: p_type = "převis"
         elif "vzpřímen" in growth_line or "vzprimen" in growth_line: p_type = "vzpřímená"
         
-        iw = 240 # Velikost ikony květináče
-        draw_plant_icon(d, p_type, L_W//2, y, iw)
-        y += iw + 20
+        pot_center_x = 240
+        pot_size = 180
+        draw_plant_pot_bottom(d, p_type, pot_center_x, bottom_zone_y + 30, pot_size)
         
-        # Zbytek prvního řádku (centimetry, letnička) kompaktně pod květináč
-        text_to_print = lines_text[0].replace("Vzrůst:", "").replace("Převis", "").replace("Polopřevis", "").replace("Vzpřímená", "").replace("|", "").strip()
-        if text_to_print:
-            f_g = ImageFont.truetype(font_bold, 45) if font_bold else ImageFont.load_default()
-            d.text((L_W//2, y), text_to_print, fill="#555555", anchor="mt", font=f_g)
-            y += 60
-        lines_text = lines_text[1:]
+        # Text pod květináčem (např. Převis 60 cm | Letnička)
+        clean_growth = lines_text[0].replace("Vzrůst:", "").replace("Typ:", "").replace("⤵", "").replace("⬆", "").replace("↘", "").strip()
+        f_growth = ImageFont.truetype(font_bold, 35) if font_bold else ImageFont.load_default()
+        d.text((pot_center_x, bottom_zone_y + pot_size + 15), clean_growth, fill="#333333", anchor="mt", font=f_growth)
+        
+        # 2. Box s cenou (přesunutý doprava)
+        bx_w, bx_h = 380, 150
+        bx_x = L_W - bx_w - 60
+        bx_y = bottom_zone_y + 20
+        d.rectangle([bx_x, bx_y, bx_x + bx_w, bx_y + bx_h], outline="#004D40", width=10)
+        f_p = ImageFont.truetype(font_bold, 95) if font_bold else ImageFont.load_default()
+        d.text((bx_x + bx_w//2 + 20, bx_y + 75), "Kč", fill="black", anchor="lm", font=f_p)
+
+    # --- STANDARDNÍ ROZLOŽENÍ PRO OSTATNÍ (Zelenina, Bylinky) ---
     else:
-        if not shu_text: y += 20 
-    
-    # FOTKA (U květin obří!)
-    if img_plant:
-        if cat == "Květiny": img_scale = 0.48
-        elif shu_text and shu_text.strip(): img_scale = 0.36
-        else: img_scale = 0.42
+        if shu_text and shu_text.strip():
+            shu_size = 70
+            f_shu = ImageFont.truetype(font_bold, shu_size) if font_bold else ImageFont.load_default()
+            while font_bold and d.textlength(shu_text.upper(), font=f_shu) > (L_W - 100) and shu_size > 30:
+                shu_size -= 5
+                f_shu = ImageFont.truetype(font_bold, shu_size)
+            d.text((L_W//2, y), shu_text.upper(), fill="#D32F2F", anchor="mt", font=f_shu) 
+            y += int(shu_size * 1.3) + 10 
+        else:
+            y += 20 
+        
+        if img_plant:
+            img_scale = 0.38 if (shu_text and shu_text.strip()) else 0.42
+            max_th, max_tw = int(L_H * img_scale), L_W - 160 
+            w, h = img_plant.size
+            ratio = min(max_tw/w, max_th/h)
+            new_size = (int(w*ratio), int(h*ratio))
+            resized_img = img_plant.resize(new_size, Image.Resampling.LANCZOS)
             
-        max_th, max_tw = int(L_H * img_scale), L_W - 160 
-        w, h = img_plant.size
-        ratio = min(max_tw/w, max_th/h)
-        new_size = (int(w*ratio), int(h*ratio))
-        resized_img = img_plant.resize(new_size, Image.Resampling.LANCZOS)
+            img_x = (L_W - new_size[0]) // 2
+            img_y = y
+            pad = 12
+            d.rectangle([img_x - pad, img_y - pad, img_x + new_size[0] + pad, img_y + new_size[1] + pad], outline="#004D40", width=4)
+            lbl.paste(resized_img, (img_x, img_y))
+            y += new_size[1] + 50 
+            
+        valid_lines = [r.strip() for r in lines_text if r.strip() and not r.endswith(": | ")]
+        combined_text = " ".join(valid_lines)
         
-        img_x = (L_W - new_size[0]) // 2
-        img_y = y
-        pad = 12
-        d.rectangle([img_x - pad, img_y - pad, img_x + new_size[0] + pad, img_y + new_size[1] + pad], outline="#004D40", width=4)
-        lbl.paste(resized_img, (img_x, img_y))
-        y += new_size[1] + 50 
+        price_y_start = L_H - 220
+        max_text_height = price_y_start - y - 20 
         
-    valid_lines = [r.strip() for r in lines_text if r.strip() and not r.endswith(": | ") and not r.endswith(": ")]
-    combined_text = " ".join(valid_lines)
-    
-    price_y_start = L_H - 220
-    max_text_height = price_y_start - y - 20 
-    
-    draw_justified_paragraph(d, combined_text, 100, y, L_W - 200, max_text_height, font_bold, font_reg)
-        
-    bx_w, bx_h, bx_y = 420, 160, price_y_start
-    d.rectangle([(L_W-bx_w)//2, bx_y, (L_W+bx_w)//2, bx_y+bx_h], outline="#004D40", width=12)
-    f_p = ImageFont.truetype(font_bold, 100) if font_bold else ImageFont.load_default()
-    d.text(((L_W+bx_w)//2 + 40, bx_y + 80), "Kč", fill="black", anchor="lm", font=f_p)
+        # Bezpečný odstavec s Auto-Škálováním
+        draw_justified_paragraph(d, combined_text, 100, y, L_W - 200, max_text_height, font_bold, font_reg)
+            
+        # Box s cenou uprostřed
+        bx_w, bx_h, bx_y = 420, 160, price_y_start
+        d.rectangle([(L_W-bx_w)//2, bx_y, (L_W+bx_w)//2, bx_y+bx_h], outline="#004D40", width=12)
+        f_p = ImageFont.truetype(font_bold, 100) if font_bold else ImageFont.load_default()
+        d.text(((L_W+bx_w)//2 + 40, bx_y + 80), "Kč", fill="black", anchor="lm", font=f_p)
+
+    # Rámeček celé cedulky
     d.rectangle([0, 0, L_W-1, L_H-1], outline="#EEEEEE", width=3)
     return lbl
 
-# --- 3. EXTRÉMNĚ BEZPEČNÁ PAMĚŤ ---
+# --- 3. BEZPEČNÁ PAMĚŤ ---
 if 'form_key' not in st.session_state: st.session_state.form_key = str(uuid.uuid4())
 if 'd' not in st.session_state:
     st.session_state.d = {
@@ -314,10 +343,10 @@ def apply_template(cat):
         st.session_state.d["r3"] = "Typ: | Sběr: "
         st.session_state.d["r4"] = "Použití: | Tip: "
     elif cat == "Květiny":
-        st.session_state.d["r1"] = "Vzrůst: Převis 60 cm | Letnička"
-        st.session_state.d["r2"] = "✿ Květ: V-IX"
-        st.session_state.d["r3"] = "☀ Stanoviště: Slunné"
-        st.session_state.d["r4"] = "💧💧💧 Zálivka: Hojná"
+        st.session_state.d["r1"] = "Vzrůst: Převis 60 cm | Typ: Letnička"
+        st.session_state.d["r2"] = "Květ: V-IX"
+        st.session_state.d["r3"] = "Stanoviště: Slunné"
+        st.session_state.d["r4"] = "Zálivka: Hojná"
     else:
         st.session_state.d["r1"] = "Stanoviště: | Zálivka: "
         st.session_state.d["r2"] = "Spon: | Výška: "
@@ -390,14 +419,13 @@ with tab1:
 
         if curr_name:
             st.info("🤖 **Prompt pro AI (Zkopírujte):**")
-            
             cat = st.session_state.d["cat"]
             if cat == "Papriky - Pálivé":
                 specifics = "Ř1: Stanoviště: ... | Zálivka: ...\nŘ2: Spon: ... | Výška: ...\nŘ3: Plod: ... | Hmotnost: ...\nŘ4: Použití: ... | Tip: ...\nŘ5: Pálivost: [Slovní popis] | SHU: [Číslo]"
             elif cat == "Bylinky":
                 specifics = "Ř1: Stanoviště: ... | Zálivka: ...\nŘ2: Spon: ... | Výška: ...\nŘ3: Typ: [Trvalka/Letnička] | Sběr: [Květen - Září]\nŘ4: Použití: ... | Tip: ..."
             elif cat == "Květiny":
-                specifics = "Ř1: Vzrůst: [Převis/Polopřevis/Vzpřímená] [Délka cm] | Typ: [Letnička/Trvalka]\nŘ2: ✿ Květ: [Měsíce, např. V-IX]\nŘ3: ☀ Stanoviště: [Slunné] nebo ☁ Stanoviště: [Stinné]\nŘ4: 💧💧💧 Zálivka: [Hojná] nebo 💧 Zálivka: [Mírná]"
+                specifics = "Ř1: Vzrůst: [Klíčové slovo: Převis/Polopřevis/Vzpřímená] [Délka, např. 60 cm] | Typ: [Letnička/Trvalka]\nŘ2: Květ: [Měsíce, např. V-IX]\nŘ3: Stanoviště: [Slunné/Stinné]\nŘ4: Zálivka: [Hojná/Mírná]"
             else:
                 specifics = "Ř1: Stanoviště: ... | Zálivka: ...\nŘ2: Spon: ... | Výška: ...\nŘ3: Plod: ... | Hmotnost: ...\nŘ4: Použití: ... | Tip: ..."
 
@@ -442,10 +470,16 @@ with tab1:
         else:
             st.session_state.d["shu"] = get_current("shu")
         
-        st.text_input("Řádek 1:", value=st.session_state.d["r1"], max_chars=65, key=c_key("r1"))
-        st.text_input("Řádek 2:", value=st.session_state.d["r2"], max_chars=65, key=c_key("r2"))
-        st.text_input("Řádek 3:", value=st.session_state.d["r3"], max_chars=65, key=c_key("r3"))
-        st.text_input("Řádek 4:", value=st.session_state.d["r4"], max_chars=65, key=c_key("r4"))
+        c = st.session_state.d["cat"]
+        lbl_r1 = "Řádek 1 (Vzrůst - napište Převis/Polopřevis/Vzpřímená!):" if c == "Květiny" else "Řádek 1 (Stanoviště/Zálivka):"
+        lbl_r2 = "Řádek 2 (Květ):" if c == "Květiny" else "Řádek 2 (Spon/Výška):"
+        lbl_r3 = "Řádek 3 (Stanoviště):" if c == "Květiny" else ("Řádek 3 (Typ/Sběr):" if c == "Bylinky" else "Řádek 3 (Plod/Hmotnost):")
+        lbl_r4 = "Řádek 4 (Zálivka):" if c == "Květiny" else "Řádek 4 (Použití/Tip):"
+
+        st.text_input(lbl_r1, value=st.session_state.d["r1"], max_chars=65, key=c_key("r1"))
+        st.text_input(lbl_r2, value=st.session_state.d["r2"], max_chars=65, key=c_key("r2"))
+        st.text_input(lbl_r3, value=st.session_state.d["r3"], max_chars=65, key=c_key("r3"))
+        st.text_input(lbl_r4, value=st.session_state.d["r4"], max_chars=65, key=c_key("r4"))
 
         st.markdown("<br>", unsafe_allow_html=True)
         col_btn1, col_btn2 = st.columns(2)
@@ -495,7 +529,7 @@ with tab1:
             f_b, f_r = get_czech_font("Bold"), get_czech_font("Regular")
             lines = [get_current("r1"), get_current("r2"), get_current("r3"), get_current("r4")]
             
-            valid_lines = [r for r in lines if r.strip() and not r.endswith(": | ") and r.strip() != "✿" and r.strip() != "☀" and r.strip() != "💧"]
+            valid_lines = [r for r in lines if r.strip() and not r.endswith(": | ")]
             if not valid_lines: valid_lines = lines
 
             single_lbl = draw_label(c_name, c_img, valid_lines, c_shu, c_cat, f_b, f_r)
