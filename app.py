@@ -46,6 +46,7 @@ def load_label_data(folder_name):
     return data, img
 
 def draw_vector_icon(d, icon_type, x, y, size):
+    """Vykreslí barevné vektorové ikony zaručeně fungující v tisku"""
     if icon_type == "Květ":
         c = size // 2; r = size // 3
         d.ellipse([x+c-r, y+c-2*r, x+c+r, y+c], fill="#EC407A")
@@ -53,7 +54,8 @@ def draw_vector_icon(d, icon_type, x, y, size):
         d.ellipse([x+c-2*r, y+c-r, x+c, y+c+r], fill="#EC407A")
         d.ellipse([x+c, y+c-r, x+c+2*r, y+c+r], fill="#EC407A")
         d.ellipse([x+c-r//2, y+c-r//2, x+c+r//2, y+c+r//2], fill="#FFEE58")
-    elif icon_type == "Stanoviště":
+        
+    elif icon_type == "Slunce":
         pad = size // 5
         d.ellipse([x+pad, y+pad, x+size-pad, y+size-pad], fill="#FFA000")
         c = size//2
@@ -61,7 +63,32 @@ def draw_vector_icon(d, icon_type, x, y, size):
         d.line([(x, y+c), (x+size, y+c)], fill="#FFA000", width=4)
         d.line([(x+pad, y+pad), (x+size-pad, y+size-pad)], fill="#FFA000", width=4)
         d.line([(x+pad, y+size-pad), (x+size-pad, y+pad)], fill="#FFA000", width=4)
-    elif icon_type == "Zálivka":
+        
+    elif icon_type == "Polostín":
+        pad = size // 5
+        # Žlutá levá půlka
+        d.ellipse([x+pad, y+pad, x+size-pad, y+size-pad], fill="#FFA000")
+        # Černá/tmavá pravá půlka
+        d.pieslice([x+pad, y+pad, x+size-pad, y+size-pad], 270, 90, fill="#424242")
+        c = size//2
+        d.line([(x+c, y), (x+c, y+size)], fill="#FFA000", width=4) 
+        d.line([(x, y+c), (x+c, y+c)], fill="#FFA000", width=4) 
+        d.line([(x+c, y+c), (x+size, y+c)], fill="#424242", width=4) 
+        d.line([(x+pad, y+pad), (x+c, y+c)], fill="#FFA000", width=4) 
+        d.line([(x+pad, y+size-pad), (x+c, y+c)], fill="#FFA000", width=4) 
+        d.line([(x+size-pad, y+pad), (x+c, y+c)], fill="#424242", width=4) 
+        d.line([(x+size-pad, y+size-pad), (x+c, y+c)], fill="#424242", width=4) 
+        
+    elif icon_type == "Stín":
+        pad = size // 5
+        d.ellipse([x+pad, y+pad, x+size-pad, y+size-pad], fill="#424242")
+        c = size//2
+        d.line([(x+c, y), (x+c, y+size)], fill="#424242", width=4)
+        d.line([(x, y+c), (x+size, y+c)], fill="#424242", width=4)
+        d.line([(x+pad, y+pad), (x+size-pad, y+size-pad)], fill="#424242", width=4)
+        d.line([(x+pad, y+size-pad), (x+size-pad, y+pad)], fill="#424242", width=4)
+        
+    elif icon_type == "Kapka":
         c = x + size//2
         d.polygon([(c, y+size//6), (x+size//4, y+size*3//4), (x+size*3//4, y+size*3//4)], fill="#29B6F6")
         d.ellipse([x+size//4, y+size//2, x+size*3//4, y+size], fill="#29B6F6")
@@ -174,6 +201,7 @@ def draw_label(name, img_plant, lines_text, shu_text, cat, font_bold, font_reg):
     lbl = Image.new('RGB', (L_W, L_H), 'white')
     d = ImageDraw.Draw(lbl)
     
+    # 1. LOGO
     y = 60
     try:
         logo = Image.open("logo txt farma.JPG").convert("RGBA")
@@ -183,6 +211,7 @@ def draw_label(name, img_plant, lines_text, shu_text, cat, font_bold, font_reg):
         y += logo.height + 40
     except: y += 100
     
+    # 2. NÁZEV ODRŮDY
     title_size = 85
     f_t = ImageFont.truetype(font_bold, title_size) if font_bold else ImageFont.load_default()
     while font_bold and d.textlength(name.upper(), font=f_t) > (L_W - 80) and title_size > 40:
@@ -196,19 +225,50 @@ def draw_label(name, img_plant, lines_text, shu_text, cat, font_bold, font_reg):
     if cat == "Květiny":
         bottom_zone_y = L_H - 280 
         
-        kvet_txt = lines_text[1].split(":")[-1].replace("✿", "").strip() if len(lines_text) > 1 else ""
-        slunce_txt = lines_text[2].split(":")[-1].replace("☀", "").replace("☁", "").strip() if len(lines_text) > 2 else ""
-        voda_txt = lines_text[3].split(":")[-1].replace("💧", "").strip() if len(lines_text) > 3 else ""
+        # Očištění dat z editačních oken
+        kvet_raw = lines_text[1].split(":")[-1].strip() if len(lines_text) > 1 else ""
+        slunce_raw = lines_text[2].split(":")[-1].strip() if len(lines_text) > 2 else ""
+        voda_raw = lines_text[3].split(":")[-1].strip() if len(lines_text) > 3 else ""
         
+        kvet_txt = kvet_raw.replace("✿", "").strip()
+        
+        # Logika pro Stanoviště (Slunce/Polostín/Stín)
+        slunce_lower = slunce_raw.lower()
+        has_polostin = "polost" in slunce_lower
+        has_stin = ("stín" in slunce_lower or "stin" in slunce_lower) and not has_polostin
+        has_slunce = "slun" in slunce_lower or "svět" in slunce_lower or "přím" in slunce_lower
+        
+        stan_icons = []
+        if has_slunce and has_polostin: stan_icons = ["Slunce", "Polostín"]
+        elif has_polostin: stan_icons = ["Polostín"]
+        elif has_stin: stan_icons = ["Stín"]
+        elif has_slunce: stan_icons = ["Slunce"]
+        else: stan_icons = ["Slunce", "Polostín"] # Výchozí
+        
+        slunce_txt = slunce_raw.replace("☀", "").replace("☁", "").replace("⛅", "").strip()
+        
+        # Logika pro Zálivku (1 až 3 kapky)
+        voda_lower = voda_raw.lower()
+        if any(w in voda_lower for w in ["hojn", "hodně", "vydat", "víc", "vysok", "3"]) or voda_raw.count("💧") >= 3:
+            drops = 3
+        elif any(w in voda_lower for w in ["mál", "suš", "občas", "1"]) or voda_raw.count("💧") == 1:
+            drops = 1
+        else:
+            drops = 2 # Výchozí mírná zálivka
+            
+        voda_txt = voda_raw.replace("💧", "").strip()
+        
+        # Sestavení položek
         items = []
-        if kvet_txt: items.append(("Květ", kvet_txt))
-        if slunce_txt: items.append(("Stanoviště", slunce_txt))
-        if voda_txt: items.append(("Zálivka", voda_txt))
+        if kvet_txt: items.append(("Květ", kvet_txt, ["Květ"]))
+        if slunce_txt: items.append(("Stanoviště", slunce_txt, stan_icons))
+        if voda_txt: items.append(("Zálivka", voda_txt, ["Kapka"] * drops))
         
         icon_size = 70
         icon_spacing = 30
         total_icons_height = len(items) * (icon_size + icon_spacing)
         
+        # OBŘÍ FOTKA KVĚTINY (Změří se zbytek místa)
         if img_plant:
             max_th = bottom_zone_y - y - total_icons_height - 30 
             max_tw = L_W - 140 
@@ -224,30 +284,35 @@ def draw_label(name, img_plant, lines_text, shu_text, cat, font_bold, font_reg):
             lbl.paste(resized_img, (img_x, img_y))
             y += new_size[1] + 40 
             
+        # Vykreslení ikon pod sebe (Sloupeček)
         f_icon_txt = ImageFont.truetype(font_bold, 55) if font_bold else ImageFont.load_default()
         icon_y = y
         
-        for i_type, txt in items:
+        for i_type, txt, icon_list in items:
             txt_w = d.textlength(txt, font=f_icon_txt)
-            total_w = icon_size + 25 + txt_w
+            icons_total_w = len(icon_list) * icon_size + (len(icon_list)-1) * 10
+            total_w = icons_total_w + 25 + txt_w
             start_x = (L_W - total_w) // 2 
             
-            draw_vector_icon(d, i_type, start_x, icon_y, icon_size)
-            d.text((start_x + icon_size + 25, icon_y + (icon_size//2)), txt, fill="#333333", anchor="lm", font=f_icon_txt)
+            curr_x = start_x
+            for icon_name in icon_list:
+                draw_vector_icon(d, icon_name, curr_x, icon_y, icon_size)
+                curr_x += icon_size + 10
+                
+            d.text((curr_x + 15, icon_y + (icon_size//2)), txt, fill="#333333", anchor="lm", font=f_icon_txt)
             icon_y += icon_size + icon_spacing
         
+        # SPODNÍ ZÓNA: VLEVO KVĚTINÁČ, VPRAVO CENA
         growth_line = lines_text[0].lower() if lines_text else ""
         p_type = "neznámá"
         if "polopřevis" in growth_line or "poloprevis" in growth_line: p_type = "polopřevis"
         elif "převis" in growth_line or "previs" in growth_line: p_type = "převis"
         elif "vzpřímen" in growth_line or "vzprimen" in growth_line: p_type = "vzpřímená"
         
-        # Posun květináče více doprava, aby se text pohodlně vešel
         pot_center_x = 340
         pot_size = 200
         draw_plant_pot_bottom(d, p_type, pot_center_x, bottom_zone_y + 40, pot_size)
         
-        # Očištění a rozdělení textu na dva řádky
         raw_growth = lines_text[0] if lines_text else ""
         parts = raw_growth.replace("Vzrůst:", "").replace("Typ:", "").replace("⤵", "").replace("⬆", "").replace("↘", "").split("|")
         part1 = parts[0].strip() if len(parts) > 0 else ""
@@ -306,7 +371,7 @@ def draw_label(name, img_plant, lines_text, shu_text, cat, font_bold, font_reg):
         
         draw_justified_paragraph(d, combined_text, 100, y, L_W - 200, max_text_height, font_bold, font_reg)
             
-        bx_w, bx_h, bx_y = 420, 160, price_y_start + 10
+        bx_w, bx_h, bx_y = 460, 180, price_y_start + 10
         d.rectangle([(L_W-bx_w)//2, bx_y, (L_W+bx_w)//2, bx_y+bx_h], outline="#004D40", width=12)
         f_p = ImageFont.truetype(font_bold, 110) if font_bold else ImageFont.load_default()
         d.text(((L_W+bx_w)//2 + 40, bx_y + 90), "Kč", fill="black", anchor="lm", font=f_p)
@@ -346,7 +411,7 @@ def apply_template(cat):
     elif cat == "Květiny":
         st.session_state.d["r1"] = "Vzrůst: Převis 60 cm | Typ: Letnička"
         st.session_state.d["r2"] = "Květ: V-IX"
-        st.session_state.d["r3"] = "Stanoviště: Slunné"
+        st.session_state.d["r3"] = "Stanoviště: Slunné a Polostín"
         st.session_state.d["r4"] = "Zálivka: Hojná"
     else:
         st.session_state.d["r1"] = "Stanoviště: | Zálivka: "
@@ -426,7 +491,7 @@ with tab1:
             elif cat == "Bylinky":
                 specifics = "Ř1: Stanoviště: ... | Zálivka: ...\nŘ2: Spon: ... | Výška: ...\nŘ3: Typ: [Trvalka/Letnička] | Sběr: [Květen - Září]\nŘ4: Použití: ... | Tip: ..."
             elif cat == "Květiny":
-                specifics = "Ř1: Vzrůst: [Klíčové slovo: Převis/Polopřevis/Vzpřímená] [Délka, např. 60 cm] | Typ: [Letnička/Trvalka]\nŘ2: Květ: [Měsíce, např. V-IX]\nŘ3: Stanoviště: [Slunné/Stinné]\nŘ4: Zálivka: [Hojná/Mírná]"
+                specifics = "Ř1: Vzrůst: [Klíčové slovo: Převis/Polopřevis/Vzpřímená] [Délka, např. 60 cm] | Typ: [Letnička/Trvalka]\nŘ2: Květ: [Měsíce, např. V-IX]\nŘ3: Stanoviště: [Slunné / Polostín / Stín / Slunné a Polostín]\nŘ4: Zálivka: [Hojná / Mírná / Málo]"
             else:
                 specifics = "Ř1: Stanoviště: ... | Zálivka: ...\nŘ2: Spon: ... | Výška: ...\nŘ3: Plod: ... | Hmotnost: ...\nŘ4: Použití: ... | Tip: ..."
 
