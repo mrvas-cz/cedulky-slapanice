@@ -251,15 +251,12 @@ def draw_label(name, img_plant, lines_text, shu_text, cat, font_bold, font_reg):
         if slunce_txt: items.append(("Stanoviště", slunce_txt, stan_icons))
         if voda_txt: items.append(("Zálivka", voda_txt, ["Kapka"] * drops))
         
-        # NOVÉ: Rozdělení do dvou sloupců (2x2 mřížka)
         icon_size = 55
         icon_spacing_y = 20
-        # Zaberou maximálně 2 řádky výšky
         total_icons_height = (icon_size * 2) + icon_spacing_y if len(items) > 1 else icon_size
         
-        # OBŘÍ FOTKA KVĚTINY (Zabere veškerý volný prostor až k ikonám)
         if img_plant:
-            max_th = bottom_zone_y - y - total_icons_height - 40 
+            max_th = bottom_zone_y - y - total_icons_height - 30 
             max_tw = L_W - 120 
             w, h = img_plant.size
             ratio = min(max_tw/w, max_th/h)
@@ -273,10 +270,8 @@ def draw_label(name, img_plant, lines_text, shu_text, cat, font_bold, font_reg):
             lbl.paste(resized_img, (img_x, img_y))
             y += new_size[1] + 30 
             
-        # Vykreslení ikon do 2-sloupcové mřížky
         f_icon_txt = ImageFont.truetype(font_bold, 45) if font_bold else ImageFont.load_default()
         
-        # Centra sloupců (levý a pravý), třetí je uprostřed pokud jsou jen 3
         centers = [
             (L_W * 0.28, y), 
             (L_W * 0.72, y), 
@@ -298,13 +293,20 @@ def draw_label(name, img_plant, lines_text, shu_text, cat, font_bold, font_reg):
                     
                 d.text((curr_x + 10, icon_y + (icon_size//2)), txt, fill="#333333", anchor="lm", font=f_icon_txt)
         
-        # SPODNÍ ZÓNA (Cena vpravo, Květináč + text vedle sebe vlevo)
-        bx_w, bx_h = 460, 180
-        bx_x = L_W - bx_w - 40 
-        bx_y = bottom_zone_y + 10
+        # SPODNÍ ZÓNA (Květináč vlevo, Cena vpravo - MATEMATICKY SPOČÍTÁNO)
+        # Nejdřív zjistíme, jak dlouhý je text "Kč"
+        f_p = ImageFont.truetype(font_bold, 100) if font_bold else ImageFont.load_default()
+        kc_w = d.textlength("Kč", font=f_p)
+        
+        bx_w, bx_h = 400, 160
+        total_price_w = bx_w + 30 + kc_w
+        bx_x = L_W - total_price_w - 50 # Pravý okraj s 50px mezerou
+        bx_y = bottom_zone_y + 30
+        
+        # Vykreslení Ceny
         d.rectangle([bx_x, bx_y, bx_x + bx_w, bx_y + bx_h], outline="#004D40", width=12)
-        f_p = ImageFont.truetype(font_bold, 110) if font_bold else ImageFont.load_default()
-        d.text((bx_x + bx_w//2 + 30, bx_y + 90), "Kč", fill="black", anchor="lm", font=f_p)
+        # anchor="lm" centruje text vertikálně k y, takže bx_y + bx_h//2 je perfektní střed rámečku
+        d.text((bx_x + bx_w + 30, bx_y + bx_h//2), "Kč", fill="black", anchor="lm", font=f_p)
         
         growth_line = lines_text[0].lower() if lines_text else ""
         p_type = "neznámá"
@@ -312,33 +314,31 @@ def draw_label(name, img_plant, lines_text, shu_text, cat, font_bold, font_reg):
         elif "převis" in growth_line or "previs" in growth_line: p_type = "převis"
         elif "vzpřímen" in growth_line or "vzprimen" in growth_line: p_type = "vzpřímená"
         
-        # Květináč a text jsou VEDLE SEBE (žádné přetékání dolu!)
-        pot_size = 140
-        pot_center_x = 150
-        draw_plant_pot_bottom(d, p_type, pot_center_x, bottom_zone_y + 30, pot_size)
+        pot_size = 160
+        pot_center_x = 160 # Uloženo hezky do levého rohu
+        draw_plant_pot_bottom(d, p_type, pot_center_x, bottom_zone_y + 40, pot_size)
         
         raw_growth = lines_text[0] if lines_text else ""
         parts = raw_growth.replace("Vzrůst:", "").replace("Typ:", "").replace("⤵", "").replace("⬆", "").replace("↘", "").split("|")
         part1 = parts[0].strip() if len(parts) > 0 else ""
         part2 = parts[1].strip() if len(parts) > 1 else ""
             
-        # Zmenšovací logika pro text, aby bezpečně seděl mezi květináčem a cenou
-        text_start_x = pot_center_x + (pot_size // 2) + 30
-        max_text_w = bx_x - text_start_x - 20
+        text_start_x = pot_center_x + (pot_size // 2) + 20
+        max_text_w = bx_x - text_start_x - 30 # Bezpečný zbývající prostor k cenovce
         
-        p1_size = 50
+        p1_size = 45
         f_growth = ImageFont.truetype(font_bold, p1_size) if font_bold else ImageFont.load_default()
         while font_bold and d.textlength(part1, font=f_growth) > max_text_w and p1_size > 20:
             p1_size -= 2
             f_growth = ImageFont.truetype(font_bold, p1_size)
             
-        p2_size = 42
+        p2_size = 38
         f_type = ImageFont.truetype(font_reg, p2_size) if font_reg else ImageFont.load_default()
-        while font_reg and d.textlength(part2, font=f_type) > max_text_w and p2_size > 20:
+        while font_reg and d.textlength(part2, font=f_type) > max_text_w and p2_size > 15:
             p2_size -= 2
             f_type = ImageFont.truetype(font_reg, p2_size)
         
-        text_y = bottom_zone_y + 40
+        text_y = bottom_zone_y + 60
         if part1:
             d.text((text_start_x, text_y), part1, fill="#222222", anchor="lt", font=f_growth)
             text_y += int(p1_size * 1.3)
@@ -381,12 +381,17 @@ def draw_label(name, img_plant, lines_text, shu_text, cat, font_bold, font_reg):
         
         draw_bottom_justified_paragraph(d, combined_text, 100, y, bottom_zone_y - 10, L_W - 200, font_bold, font_reg)
             
-        bx_w, bx_h = 460, 180
-        bx_x = (L_W - bx_w) // 2
-        bx_y = bottom_zone_y + 10
+        # ZMĚŘENÍ A VYCENTROVÁNÍ CENY PRO ZELENINU
+        f_p = ImageFont.truetype(font_bold, 100) if font_bold else ImageFont.load_default()
+        kc_w = d.textlength("Kč", font=f_p)
+        bx_w, bx_h = 420, 160
+        total_price_w = bx_w + 30 + kc_w
+        
+        bx_x = (L_W - total_price_w) // 2 # Zaručí, že box i s nápisem Kč jsou přesně uprostřed!
+        bx_y = bottom_zone_y + 20
+        
         d.rectangle([bx_x, bx_y, bx_x + bx_w, bx_y + bx_h], outline="#004D40", width=12)
-        f_p = ImageFont.truetype(font_bold, 110) if font_bold else ImageFont.load_default()
-        d.text((bx_x + bx_w//2 + 40, bx_y + 90), "Kč", fill="black", anchor="lm", font=f_p)
+        d.text((bx_x + bx_w + 30, bx_y + bx_h//2), "Kč", fill="black", anchor="lm", font=f_p)
 
     d.rectangle([0, 0, L_W-1, L_H-1], outline="#EEEEEE", width=3)
     return lbl
