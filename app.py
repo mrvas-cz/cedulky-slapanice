@@ -216,8 +216,39 @@ def draw_label(name, img_plant, lines_text, shu_text, cat, font_bold, font_reg):
     d.text((L_W//2, y), name.upper(), fill="#004D40", anchor="mt", font=f_t)
     y += int(title_size * 1.3) + 10 
     
+    # --- SPECIÁLNÍ ROZLOŽENÍ PRO SADBU ---
+    if cat == "Sadba":
+        bottom_zone_y = L_H - 220 
+        
+        # Obří fotka, která zabere celý prostor a vycentruje se
+        if img_plant:
+            max_th = bottom_zone_y - y - 30 
+            max_tw = L_W - 80 
+            w, h = img_plant.size
+            ratio = min(max_tw/w, max_th/h)
+            new_size = (int(w*ratio), int(h*ratio))
+            resized_img = img_plant.resize(new_size, Image.Resampling.LANCZOS)
+            
+            img_x = (L_W - new_size[0]) // 2
+            img_y = y + (max_th - new_size[1]) // 2 # Vycentrování fotky na výšku!
+            pad = 12
+            d.rectangle([img_x - pad, img_y - pad, img_x + new_size[0] + pad, img_y + new_size[1] + pad], outline="#004D40", width=4)
+            lbl.paste(resized_img, (img_x, img_y))
+            
+        # Box s cenou uprostřed 
+        f_p = ImageFont.truetype(font_bold, 100) if font_bold else ImageFont.load_default()
+        kc_w = d.textlength("Kč", font=f_p)
+        bx_w, bx_h = 420, 160
+        total_price_w = bx_w + 30 + kc_w
+        
+        bx_x = (L_W - total_price_w) // 2 
+        bx_y = bottom_zone_y + 20
+        
+        d.rectangle([bx_x, bx_y, bx_x + bx_w, bx_y + bx_h], outline="#004D40", width=12)
+        d.text((bx_x + bx_w + 30, bx_y + bx_h//2), "Kč", fill="black", anchor="lm", font=f_p)
+
     # --- SPECIÁLNÍ ROZLOŽENÍ PRO KVĚTINY ---
-    if cat == "Květiny":
+    elif cat == "Květiny":
         bottom_zone_y = L_H - 240 
         
         kvet_raw = lines_text[1].split(":")[-1].strip() if len(lines_text) > 1 else ""
@@ -293,19 +324,16 @@ def draw_label(name, img_plant, lines_text, shu_text, cat, font_bold, font_reg):
                     
                 d.text((curr_x + 10, icon_y + (icon_size//2)), txt, fill="#333333", anchor="lm", font=f_icon_txt)
         
-        # SPODNÍ ZÓNA (Květináč vlevo, Cena vpravo - MATEMATICKY SPOČÍTÁNO)
-        # Nejdřív zjistíme, jak dlouhý je text "Kč"
+        # SPODNÍ ZÓNA
         f_p = ImageFont.truetype(font_bold, 100) if font_bold else ImageFont.load_default()
         kc_w = d.textlength("Kč", font=f_p)
         
         bx_w, bx_h = 400, 160
         total_price_w = bx_w + 30 + kc_w
-        bx_x = L_W - total_price_w - 50 # Pravý okraj s 50px mezerou
+        bx_x = L_W - total_price_w - 50 
         bx_y = bottom_zone_y + 30
         
-        # Vykreslení Ceny
         d.rectangle([bx_x, bx_y, bx_x + bx_w, bx_y + bx_h], outline="#004D40", width=12)
-        # anchor="lm" centruje text vertikálně k y, takže bx_y + bx_h//2 je perfektní střed rámečku
         d.text((bx_x + bx_w + 30, bx_y + bx_h//2), "Kč", fill="black", anchor="lm", font=f_p)
         
         growth_line = lines_text[0].lower() if lines_text else ""
@@ -315,7 +343,7 @@ def draw_label(name, img_plant, lines_text, shu_text, cat, font_bold, font_reg):
         elif "vzpřímen" in growth_line or "vzprimen" in growth_line: p_type = "vzpřímená"
         
         pot_size = 160
-        pot_center_x = 160 # Uloženo hezky do levého rohu
+        pot_center_x = 160 
         draw_plant_pot_bottom(d, p_type, pot_center_x, bottom_zone_y + 40, pot_size)
         
         raw_growth = lines_text[0] if lines_text else ""
@@ -324,7 +352,7 @@ def draw_label(name, img_plant, lines_text, shu_text, cat, font_bold, font_reg):
         part2 = parts[1].strip() if len(parts) > 1 else ""
             
         text_start_x = pot_center_x + (pot_size // 2) + 20
-        max_text_w = bx_x - text_start_x - 30 # Bezpečný zbývající prostor k cenovce
+        max_text_w = bx_x - text_start_x - 30 
         
         p1_size = 45
         f_growth = ImageFont.truetype(font_bold, p1_size) if font_bold else ImageFont.load_default()
@@ -387,7 +415,7 @@ def draw_label(name, img_plant, lines_text, shu_text, cat, font_bold, font_reg):
         bx_w, bx_h = 420, 160
         total_price_w = bx_w + 30 + kc_w
         
-        bx_x = (L_W - total_price_w) // 2 # Zaručí, že box i s nápisem Kč jsou přesně uprostřed!
+        bx_x = (L_W - total_price_w) // 2 
         bx_y = bottom_zone_y + 20
         
         d.rectangle([bx_x, bx_y, bx_x + bx_w, bx_y + bx_h], outline="#004D40", width=12)
@@ -430,6 +458,11 @@ def apply_template(cat):
         st.session_state.d["r2"] = "Květ: V-IX"
         st.session_state.d["r3"] = "Stanoviště: Slunné a Polostín"
         st.session_state.d["r4"] = "Zálivka: Hojná"
+    elif cat == "Sadba":
+        st.session_state.d["r1"] = ""
+        st.session_state.d["r2"] = ""
+        st.session_state.d["r3"] = ""
+        st.session_state.d["r4"] = ""
     else:
         st.session_state.d["r1"] = "Stanoviště: | Zálivka: "
         st.session_state.d["r2"] = "Spon: | Výška: "
@@ -459,6 +492,8 @@ with tab1:
             matched_cat = None
             if any(x in ln for x in ["chilli", "chili", "jalape", "habanero", "páliv", "paliv"]):
                 matched_cat = "Papriky - Pálivé"
+            elif any(x in ln for x in ["sazenic", "sadba", "roubovan"]):
+                matched_cat = "Sadba"
             elif "rajče" in ln or "rajčata" in ln or "rajcata" in ln:
                 matched_cat = "Rajčata"
             elif "paprika" in ln or "papriky" in ln:
@@ -501,22 +536,25 @@ with tab1:
             st.rerun()
 
         if curr_name:
-            st.info("🤖 **Prompt pro AI (Zkopírujte):**")
             cat = st.session_state.d["cat"]
-            if cat == "Papriky - Pálivé":
-                specifics = "Ř1: Stanoviště: ... | Zálivka: ...\nŘ2: Spon: ... | Výška: ...\nŘ3: Plod: ... | Hmotnost: ...\nŘ4: Použití: ... | Tip: ...\nŘ5: Pálivost: [Slovní popis] | SHU: [Číslo]"
-            elif cat == "Bylinky":
-                specifics = "Ř1: Stanoviště: ... | Zálivka: ...\nŘ2: Spon: ... | Výška: ...\nŘ3: Typ: [Trvalka/Letnička] | Sběr: [Květen - Září]\nŘ4: Použití: ... | Tip: ..."
-            elif cat == "Květiny":
-                specifics = "Ř1: Vzrůst: [Klíčové slovo: Převis/Polopřevis/Vzpřímená] [Délka, např. 60 cm] | Typ: [Letnička/Trvalka]\nŘ2: Květ: [Měsíce, např. V-IX]\nŘ3: Stanoviště: [Slunné / Polostín / Stín / Slunné a Polostín]\nŘ4: Zálivka: [Hojná / Mírná / Málo]"
+            if cat == "Sadba":
+                st.info("💡 **Pro kategorii Sadba není potřeba text od AI.** Stačí pouze dohledat a nahrát hezkou fotku sazenice.")
             else:
-                specifics = "Ř1: Stanoviště: ... | Zálivka: ...\nŘ2: Spon: ... | Výška: ...\nŘ3: Plod: ... | Hmotnost: ...\nŘ4: Použití: ... | Tip: ..."
+                st.info("🤖 **Prompt pro AI (Zkopírujte):**")
+                if cat == "Papriky - Pálivé":
+                    specifics = "Ř1: Stanoviště: ... | Zálivka: ...\nŘ2: Spon: ... | Výška: ...\nŘ3: Plod: ... | Hmotnost: ...\nŘ4: Použití: ... | Tip: ...\nŘ5: Pálivost: [Slovní popis] | SHU: [Číslo]"
+                elif cat == "Bylinky":
+                    specifics = "Ř1: Stanoviště: ... | Zálivka: ...\nŘ2: Spon: ... | Výška: ...\nŘ3: Typ: [Trvalka/Letnička] | Sběr: [Květen - Září]\nŘ4: Použití: ... | Tip: ..."
+                elif cat == "Květiny":
+                    specifics = "Ř1: Vzrůst: [Klíčové slovo: Převis/Polopřevis/Vzpřímená] [Délka, např. 60 cm] | Typ: [Letnička/Trvalka]\nŘ2: Květ: [Měsíce, např. V-IX]\nŘ3: Stanoviště: [Slunné / Polostín / Stín / Slunné a Polostín]\nŘ4: Zálivka: [Hojná / Mírná / Málo]"
+                else:
+                    specifics = "Ř1: Stanoviště: ... | Zálivka: ...\nŘ2: Spon: ... | Výška: ...\nŘ3: Plod: ... | Hmotnost: ...\nŘ4: Použití: ... | Tip: ..."
 
-            ai_prompt = f"Jsi odborník. Hledáme odrůdu: {curr_name}.\n!!! KRITICKÁ PRAVIDLA:\n1. OVĚŘ A OPRAV NÁZEV: Zjisti přesný oficiální název (např. 'rajče start' -> 'Rajče Start F1').\n2. PIŠ EXTRÉMNĚ STRUČNĚ (max 6 slov na řádek).\n3. PIŠ LAICKY PRO BĚŽNÉHO SPOTŘEBITELE. VYNECH VŠECHNA CIZÍ NEBO ODBORNÁ SLOVA. !!!\nVypiš to přesně takto:\nPŘESNÝ NÁZEV: (doplň oficiální název)\n{specifics}"
-            st.code(ai_prompt, language="text")
+                ai_prompt = f"Jsi odborník. Hledáme odrůdu: {curr_name}.\n!!! KRITICKÁ PRAVIDLA:\n1. OVĚŘ A OPRAV NÁZEV: Zjisti přesný oficiální název (např. 'rajče start' -> 'Rajče Start F1').\n2. PIŠ EXTRÉMNĚ STRUČNĚ (max 6 slov na řádek).\n3. PIŠ LAICKY PRO BĚŽNÉHO SPOTŘEBITELE. VYNECH VŠECHNA CIZÍ NEBO ODBORNÁ SLOVA. !!!\nVypiš to přesně takto:\nPŘESNÝ NÁZEV: (doplň oficiální název)\n{specifics}"
+                st.code(ai_prompt, language="text")
 
             q = curr_name.replace(" ", "+")
-            st.markdown(f"🔍 [Obrázky Google](https://google.cz/search?tbm=isch&q={q}+flower+macro+white+background) | [Data Itálie](https://translate.google.com/translate?sl=auto&tl=cs&u=https://www.google.com/search?q={q}+varieta+peso) | [Data Nizozemí](https://translate.google.com/translate?sl=auto&tl=cs&u=https://www.google.com/search?q={q}+ras+kenmerken)")
+            st.markdown(f"🔍 [Obrázky Google](https://google.cz/search?tbm=isch&q={q}+plant+seedling+macro+white+background) | [Data Itálie](https://translate.google.com/translate?sl=auto&tl=cs&u=https://www.google.com/search?q={q}+varieta+peso) | [Data Nizozemí](https://translate.google.com/translate?sl=auto&tl=cs&u=https://www.google.com/search?q={q}+ras+kenmerken)")
 
         up_file = st.file_uploader("📸 Nahrát staženou fotku:", type=["jpg", "png", "jpeg"], key=c_key("img_up"))
         if up_file:
@@ -528,41 +566,44 @@ with tab1:
     with col_data:
         st.header("2. Obsah Cedulky")
 
-        ai_input = st.text_area("Vložit výsledek z AI:", height=120, key=c_key("ai"))
-        if ai_input and ai_input != st.session_state.d.get("last_ai"):
-            sync_to_d() 
-            st.session_state.d["last_ai"] = ai_input
-            clean_txt = ai_input.replace("**", "").replace("*", "")
-            
-            for line in clean_txt.split('\n'):
-                if "PŘESNÝ NÁZEV:" in line.upper():
-                    possible_name = line.split(":", 1)[1].strip()
-                    if possible_name: st.session_state.d["name"] = possible_name
-                elif "Ř1:" in line: st.session_state.d["r1"] = line.split("Ř1:")[1].strip()[:65]
-                elif "Ř2:" in line: st.session_state.d["r2"] = line.split("Ř2:")[1].strip()[:65]
-                elif "Ř3:" in line: st.session_state.d["r3"] = line.split("Ř3:")[1].strip()[:65]
-                elif "Ř4:" in line: st.session_state.d["r4"] = line.split("Ř4:")[1].strip()[:65]
-                elif "Ř5:" in line or "PÁLIVOST:" in line.upper(): 
-                    st.session_state.d["shu"] = line.split(":", 1)[1].strip()[:65]
-            
-            st.session_state.form_key = str(uuid.uuid4())
-            st.rerun()
-
-        if st.session_state.d["cat"] == "Papriky - Pálivé":
-            st.session_state.d["shu"] = st.text_input("🌶️ Pálivost (SHU):", value=st.session_state.d.get("shu", ""), max_chars=65, key=c_key("shu"))
+        if st.session_state.d["cat"] == "Sadba":
+            st.success("🌱 **Režim Sadba:** Bude vytištěn pouze velký název, maximálně zvětšená fotka a cena. Žádné další popisky nejsou potřeba.")
         else:
-            st.session_state.d["shu"] = get_current("shu")
-        
-        c = st.session_state.d["cat"]
-        lbl_r1 = "Řádek 1 (Vzrůst - napište Převis/Polopřevis/Vzpřímená!):" if c == "Květiny" else "Řádek 1 (Stanoviště/Zálivka):"
-        lbl_r2 = "Řádek 2 (Květ):" if c == "Květiny" else "Řádek 2 (Spon/Výška):"
-        lbl_r3 = "Řádek 3 (Stanoviště):" if c == "Květiny" else ("Řádek 3 (Typ/Sběr):" if c == "Bylinky" else "Řádek 3 (Plod/Hmotnost):")
-        lbl_r4 = "Řádek 4 (Zálivka):" if c == "Květiny" else "Řádek 4 (Použití/Tip):"
+            ai_input = st.text_area("Vložit výsledek z AI:", height=120, key=c_key("ai"))
+            if ai_input and ai_input != st.session_state.d.get("last_ai"):
+                sync_to_d() 
+                st.session_state.d["last_ai"] = ai_input
+                clean_txt = ai_input.replace("**", "").replace("*", "")
+                
+                for line in clean_txt.split('\n'):
+                    if "PŘESNÝ NÁZEV:" in line.upper():
+                        possible_name = line.split(":", 1)[1].strip()
+                        if possible_name: st.session_state.d["name"] = possible_name
+                    elif "Ř1:" in line: st.session_state.d["r1"] = line.split("Ř1:")[1].strip()[:65]
+                    elif "Ř2:" in line: st.session_state.d["r2"] = line.split("Ř2:")[1].strip()[:65]
+                    elif "Ř3:" in line: st.session_state.d["r3"] = line.split("Ř3:")[1].strip()[:65]
+                    elif "Ř4:" in line: st.session_state.d["r4"] = line.split("Ř4:")[1].strip()[:65]
+                    elif "Ř5:" in line or "PÁLIVOST:" in line.upper(): 
+                        st.session_state.d["shu"] = line.split(":", 1)[1].strip()[:65]
+                
+                st.session_state.form_key = str(uuid.uuid4())
+                st.rerun()
 
-        st.text_input(lbl_r1, value=st.session_state.d["r1"], max_chars=65, key=c_key("r1"))
-        st.text_input(lbl_r2, value=st.session_state.d["r2"], max_chars=65, key=c_key("r2"))
-        st.text_input(lbl_r3, value=st.session_state.d["r3"], max_chars=65, key=c_key("r3"))
-        st.text_input(lbl_r4, value=st.session_state.d["r4"], max_chars=65, key=c_key("r4"))
+            if st.session_state.d["cat"] == "Papriky - Pálivé":
+                st.session_state.d["shu"] = st.text_input("🌶️ Pálivost (SHU):", value=st.session_state.d.get("shu", ""), max_chars=65, key=c_key("shu"))
+            else:
+                st.session_state.d["shu"] = get_current("shu")
+            
+            c = st.session_state.d["cat"]
+            lbl_r1 = "Řádek 1 (Vzrůst - napište Převis/Polopřevis/Vzpřímená!):" if c == "Květiny" else "Řádek 1 (Stanoviště/Zálivka):"
+            lbl_r2 = "Řádek 2 (Květ):" if c == "Květiny" else "Řádek 2 (Spon/Výška):"
+            lbl_r3 = "Řádek 3 (Stanoviště):" if c == "Květiny" else ("Řádek 3 (Typ/Sběr):" if c == "Bylinky" else "Řádek 3 (Plod/Hmotnost):")
+            lbl_r4 = "Řádek 4 (Zálivka):" if c == "Květiny" else "Řádek 4 (Použití/Tip):"
+
+            st.text_input(lbl_r1, value=st.session_state.d["r1"], max_chars=65, key=c_key("r1"))
+            st.text_input(lbl_r2, value=st.session_state.d["r2"], max_chars=65, key=c_key("r2"))
+            st.text_input(lbl_r3, value=st.session_state.d["r3"], max_chars=65, key=c_key("r3"))
+            st.text_input(lbl_r4, value=st.session_state.d["r4"], max_chars=65, key=c_key("r4"))
 
         st.markdown("<br>", unsafe_allow_html=True)
         col_btn1, col_btn2 = st.columns(2)
