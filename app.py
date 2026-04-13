@@ -216,12 +216,10 @@ def draw_label(name, img_plant, lines_text, shu_text, cat, font_bold, font_reg):
         main_title = name.strip()
         sub_title = ""
 
-    # U Sadby nastavíme startovací velikost nadpisu na gigantických 110, u ostatních 85
     start_title_size = 110 if cat == "Sadba" else 85
     title_size = start_title_size
     f_t = ImageFont.truetype(font_bold, title_size) if font_bold else ImageFont.load_default()
     
-    # Škálování hlavního nadpisu
     while font_bold and d.textlength(main_title.upper(), font=f_t) > (L_W - 80) and title_size > 30:
         title_size -= 5
         f_t = ImageFont.truetype(font_bold, title_size)
@@ -229,9 +227,8 @@ def draw_label(name, img_plant, lines_text, shu_text, cat, font_bold, font_reg):
     d.text((L_W//2, y), main_title.upper(), fill="#004D40", anchor="mt", font=f_t)
     y += int(title_size * 1.2) 
 
-    # Pokud máme červený podtitul z pomlčky, vykreslíme ho
     if sub_title:
-        sub_size = int(title_size * 0.85) # Bude trošku menší než hlavní nadpis
+        sub_size = int(title_size * 0.85) 
         f_sub = ImageFont.truetype(font_bold, sub_size) if font_bold else ImageFont.load_default()
         while font_bold and d.textlength(sub_title.upper(), font=f_sub) > (L_W - 80) and sub_size > 20:
             sub_size -= 5
@@ -348,6 +345,7 @@ def draw_label(name, img_plant, lines_text, shu_text, cat, font_bold, font_reg):
                     
                 d.text((curr_x + 10, icon_y + (icon_size//2)), txt, fill="#333333", anchor="lm", font=f_icon_txt)
         
+        # SPODNÍ ZÓNA
         f_p = ImageFont.truetype(font_bold, 100) if font_bold else ImageFont.load_default()
         kc_w = d.textlength("Kč", font=f_p)
         
@@ -574,13 +572,11 @@ with tab1:
                 else:
                     specifics = "Ř1: Stanoviště: ... | Zálivka: ...\nŘ2: Spon: ... | Výška: ...\nŘ3: Plod: ... | Hmotnost: ...\nŘ4: Použití: ... | Tip: ..."
 
-                # Očištění názvu od pomlčky pro prompt
                 search_name = curr_name.split(" - ")[0].strip() if " - " in curr_name else curr_name
 
                 ai_prompt = f"Jsi odborník. Hledáme odrůdu: {search_name}.\n!!! KRITICKÁ PRAVIDLA:\n1. OVĚŘ A OPRAV NÁZEV: Zjisti přesný oficiální název (např. 'rajče start' -> 'Rajče Start F1').\n2. PIŠ EXTRÉMNĚ STRUČNĚ (max 6 slov na řádek).\n3. PIŠ LAICKY PRO BĚŽNÉHO SPOTŘEBITELE. VYNECH VŠECHNA CIZÍ NEBO ODBORNÁ SLOVA. !!!\nVypiš to přesně takto:\nPŘESNÝ NÁZEV: (doplň oficiální název)\n{specifics}"
                 st.code(ai_prompt, language="text")
 
-            # Linky na Google obrázky
             search_q = (curr_name.split(" - ")[0].strip() if " - " in curr_name else curr_name).replace(" ", "+")
             st.markdown(f"🔍 [Obrázky Google](https://google.cz/search?tbm=isch&q={search_q}+plant+seedling+macro+white+background) | [Data Itálie](https://translate.google.com/translate?sl=auto&tl=cs&u=https://www.google.com/search?q={search_q}+varieta+peso) | [Data Nizozemí](https://translate.google.com/translate?sl=auto&tl=cs&u=https://www.google.com/search?q={search_q}+ras+kenmerken)")
 
@@ -605,8 +601,6 @@ with tab1:
                 
                 for line in clean_txt.split('\n'):
                     if "PŘESNÝ NÁZEV:" in line.upper():
-                        # AI by mohlo smazat naši pomlčku, tak název updatujeme jen částečně nebo vůbec. 
-                        # Pro jistotu ho AI přepíše jen pokud neobsahuje náš chytrý oddělovač
                         possible_name = line.split(":", 1)[1].strip()
                         if possible_name and " - " not in st.session_state.d["name"]: 
                             st.session_state.d["name"] = possible_name
@@ -645,7 +639,6 @@ with tab1:
                 f_name = st.session_state.d["name"]
                 f_img = st.session_state.d.get("img")
                 if f_name and f_img:
-                    # Clean filename zbavíme od pomlčky pro ukládání složek
                     save_name = f_name.split(" - ")[0].strip() if " - " in f_name else f_name
                     p = os.path.join(DB_DIR, clean_filename(save_name))
                     if not os.path.exists(p): os.makedirs(p)
@@ -689,10 +682,8 @@ with tab1:
             valid_lines = [r for r in lines if r.strip() and not r.endswith(": | ") and r.strip() != "✿" and r.strip() != "☀" and r.strip() != "💧"]
             if not valid_lines: valid_lines = lines
 
-            # Vygenerování hlavní cedulky
             single_lbl = draw_label(c_name, c_img, valid_lines, c_shu, c_cat, f_b, f_r)
 
-            # Plátno 1: Klasické 4 cedulky (A4 Portrait)
             canvas_4 = Image.new('RGB', (2480, 3508), 'white')
             canvas_4.paste(single_lbl, (0, 0))
             canvas_4.paste(single_lbl, (1240, 0))
@@ -702,7 +693,6 @@ with tab1:
             pdf_buf_4 = io.BytesIO()
             canvas_4.save(pdf_buf_4, format="PDF")
 
-            # Plátno 2: Velké 2 cedulky (A4 Landscape, cedulky velké jako A5)
             canvas_2 = Image.new('RGB', (3508, 2480), 'white')
             single_lbl_a5 = single_lbl.resize((1754, 2480), Image.Resampling.LANCZOS)
             canvas_2.paste(single_lbl_a5, (0, 0))
@@ -711,7 +701,6 @@ with tab1:
             pdf_buf_2 = io.BytesIO()
             canvas_2.save(pdf_buf_2, format="PDF")
 
-            # UI tlačítka pod sebou
             c_img_col, c_dl_col = st.columns([1.5, 1])
             c_img_col.image(canvas_4, use_column_width=True) 
             
@@ -721,10 +710,18 @@ with tab1:
                 st.markdown("<br>", unsafe_allow_html=True)
                 st.download_button("📥 STÁHNOUT PDF: 2 CEDULKY (Velké A5)", pdf_buf_2.getvalue(), f"{down_name}_2x_A5.pdf", mime="application/pdf", type="secondary", use_container_width=True)
 
-# --- ZÁLOŽKA 2: ARCHIV ---
+# --- ZÁLOŽKA 2: NOVÝ CHYTRÝ ARCHIV S FILTRY ---
 with tab2:
     all_folders = [f for f in os.listdir(DB_DIR) if os.path.isdir(os.path.join(DB_DIR, f))]
-    st.header(f"📊 Přehled skladu ({len(all_folders)} položek)")
+    
+    # NOVÉ: Ovládací panel archivu (Hledání a Třídění)
+    c_head, c_search, c_sort = st.columns([2, 2, 1])
+    with c_head:
+        st.header(f"📊 Přehled skladu ({len(all_folders)} položek)")
+    with c_search:
+        search_q = st.text_input("🔍 Hledat odrůdu:", placeholder="Zadejte část názvu...").lower()
+    with c_sort:
+        sort_by = st.selectbox("Třídit podle:", ["Název (A-Z)", "Název (Z-A)"])
 
     for kat in KATEGORIE:
         kat_items = []
@@ -733,16 +730,26 @@ with tab2:
             if os.path.exists(path):
                 with open(path, "r", encoding="utf-8") as file:
                     info = json.load(file)
-                    if info.get("cat", "Ostatní") == kat: kat_items.append((f, info))
+                    # Filtrace podle hledaného slova
+                    item_name = info.get('name', 'Neznámý').lower()
+                    if info.get("cat", "Ostatní") == kat:
+                        if search_q in item_name:
+                            kat_items.append((f, info))
 
         if kat_items:
-            with st.expander(f"📂 {kat} ({len(kat_items)})"):
+            # NOVÉ: Abecední třídění položek uvnitř kategorie
+            if sort_by == "Název (A-Z)":
+                kat_items.sort(key=lambda x: x[1].get('name', '').lower())
+            else:
+                kat_items.sort(key=lambda x: x[1].get('name', '').lower(), reverse=True)
+
+            # Automatické rozevření složky, pokud uživatel něco vyhledává
+            with st.expander(f"📂 {kat} ({len(kat_items)})", expanded=(bool(search_q))):
                 for f_name, info in kat_items:
                     c1, c2, c3 = st.columns([1, 3, 1])
                     img_p = os.path.join(DB_DIR, f_name, "photo.jpg")
                     if os.path.exists(img_p): c1.image(img_p, width=120)
 
-                    # Zobrazení názvu i s červenou koncovkou v archivu
                     disp_name = info.get('name', 'Neznámý')
                     if " - " in disp_name:
                         disp_name = disp_name.replace(" - ", " <span style='color:red;'>- ") + "</span>"
