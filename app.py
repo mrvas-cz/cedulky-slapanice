@@ -8,13 +8,21 @@ import json
 import shutil
 import uuid
 
-# --- 1. KONFIGURACE ---
-DB_DIR = "archiv_cedulek"
+# --- 1. KONFIGURACE A ABSOLUTNÍ CESTA ---
+# Aplikace si přesně zjistí, kde leží tento soubor app.py, a archiv vytvoří VŽDY vedle něj.
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_DIR = os.path.join(BASE_DIR, "archiv_cedulek")
+
 KATEGORIE = ["Papriky - Sladké", "Papriky - Pálivé", "Rajčata", "Sadba", "Bylinky", "Květiny", "Ostatní"]
 
 if not os.path.exists(DB_DIR): os.makedirs(DB_DIR)
 
 st.set_page_config(page_title="Farma Systém - Cedulky", page_icon="🌿", layout="wide")
+
+# --- NOVÉ: BOČNÍ PANEL S INFORMACEMI O SYSTÉMU ---
+with st.sidebar:
+    st.header("⚙️ Systémové informace")
+    st.info(f"📂 **Cesta k vašemu archivu:**\n\n`{DB_DIR}`\n\n*(Sem můžete překopírovat své staré složky s cedulkami, aby je aplikace znovu načetla)*")
 
 st.markdown("""
     <style>
@@ -207,7 +215,6 @@ def draw_label(name, img_plant, lines_text, shu_text, cat, font_bold, font_reg):
         y += logo.height + 40
     except: y += 100
     
-    # --- CHYTRÉ ROZDĚLENÍ A OBARVENÍ NÁZVU ---
     if " - " in name:
         parts = name.split(" - ", 1)
         main_title = parts[0].strip()
@@ -534,7 +541,6 @@ with tab1:
                 st.rerun()
         
         folder_check = clean_filename(curr_name.split("-")[0].strip() if "-" in curr_name else curr_name)
-        # Zobrazíme varování pouze tehdy, pokud nevytváříme cedulku, kterou jsme zrovna načetli
         if curr_name and os.path.exists(os.path.join(DB_DIR, folder_check)) and st.session_state.d.get("loaded_from") != folder_check:
             st.warning("⚠️ Odrůda již v archivu existuje!")
             if st.button("📂 Načíst existující data z archivu", type="primary"):
@@ -634,7 +640,6 @@ with tab1:
 
         st.markdown("<br>", unsafe_allow_html=True)
         
-        # --- CHYTRÁ TLAČÍTKA (PŘIDÁNO MAZÁNÍ PŮVODNÍ SLOŽKY PŘI ÚPRAVĚ) ---
         is_editing = st.session_state.d.get("loaded_from") is not None
         
         if is_editing:
@@ -650,7 +655,6 @@ with tab1:
                         new_folder = clean_filename(save_name)
                         loaded_from = st.session_state.d.get("loaded_from")
                         
-                        # Pokud uživatel změnil název, smažeme původní složku!
                         if loaded_from and loaded_from != new_folder:
                             old_p = os.path.join(DB_DIR, loaded_from)
                             if os.path.exists(old_p):
@@ -768,6 +772,7 @@ with tab1:
             valid_lines = [r for r in lines if r.strip() and not r.endswith(": | ") and r.strip() != "✿" and r.strip() != "☀" and r.strip() != "💧"]
             if not valid_lines: valid_lines = lines
 
+            # Vygenerování hlavní cedulky
             single_lbl = draw_label(c_name, c_img, valid_lines, c_shu, c_cat, f_b, f_r)
 
             canvas_4 = Image.new('RGB', (2480, 3508), 'white')
