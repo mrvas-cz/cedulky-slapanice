@@ -345,7 +345,6 @@ def draw_label(name, img_plant, lines_text, shu_text, cat, font_bold, font_reg):
                     
                 d.text((curr_x + 10, icon_y + (icon_size//2)), txt, fill="#333333", anchor="lm", font=f_icon_txt)
         
-        # SPODNÍ ZÓNA
         f_p = ImageFont.truetype(font_bold, 100) if font_bold else ImageFont.load_default()
         kc_w = d.textlength("Kč", font=f_p)
         
@@ -451,7 +450,8 @@ if 'd' not in st.session_state:
         "name": "", "cat": "Ostatní", "img": None,
         "r1": "Stanoviště: | Zálivka: ", "r2": "Spon: | Výška: ",
         "r3": "Plod: | Hmotnost: ", "r4": "Použití: | Tip: ", 
-        "shu": "", "last_ai": "", "last_name_check": ""
+        "shu": "", "last_ai": "", "last_name_check": "",
+        "loaded_from": None
     }
 if 'show_load_msg' not in st.session_state: st.session_state.show_load_msg = False
 
@@ -493,7 +493,7 @@ def apply_template(cat):
 st.title("🌿 Farmářský Systém: Generátor Cedulek")
 
 if st.session_state.show_load_msg:
-    st.success("✅ Cedulka úspěšně načtena! Vše je v Editoru připraveno k tisku nebo úpravám.")
+    st.success("✅ Cedulka úspěšně načtena! Nyní jste v REŽIMU ÚPRAV.")
     st.session_state.show_load_msg = False
 
 tab1, tab2 = st.tabs(["🖌️ Editor & Tisk", "🗃️ Sklad / Archiv"])
@@ -533,9 +533,10 @@ with tab1:
                 st.session_state.form_key = str(uuid.uuid4())
                 st.rerun()
         
-        folder_check = clean_filename(curr_name.split("-")[0] if "-" in curr_name else curr_name)
-        if curr_name and os.path.exists(os.path.join(DB_DIR, folder_check)):
-            st.warning("⚠️ Odrůda pravděpodobně již v archivu existuje!")
+        folder_check = clean_filename(curr_name.split("-")[0].strip() if "-" in curr_name else curr_name)
+        # Zobrazíme varování pouze tehdy, pokud nevytváříme cedulku, kterou jsme zrovna načetli
+        if curr_name and os.path.exists(os.path.join(DB_DIR, folder_check)) and st.session_state.d.get("loaded_from") != folder_check:
+            st.warning("⚠️ Odrůda již v archivu existuje!")
             if st.button("📂 Načíst existující data z archivu", type="primary"):
                 loaded_d, loaded_img = load_label_data(folder_check)
                 st.session_state.d.update(loaded_d)
@@ -543,6 +544,7 @@ with tab1:
                 if "shu" not in st.session_state.d: st.session_state.d["shu"] = "" 
                 st.session_state.d["img"] = loaded_img
                 st.session_state.d["last_ai"] = ""
+                st.session_state.d["loaded_from"] = folder_check
                 st.session_state.form_key = str(uuid.uuid4())
                 st.session_state.show_load_msg = True
                 st.rerun()
@@ -591,7 +593,7 @@ with tab1:
         st.header("2. Obsah Cedulky")
 
         if st.session_state.d["cat"] == "Sadba":
-            st.success("🌱 **Režim Sadba:** Bude vytištěn pouze velký název (podporuje obarvení a rozdělení pomocí ` - `), maximálně zvětšená fotka a cena.")
+            st.success("🌱 **Režim Sadba:** Bude vytištěn pouze velký název, maximálně zvětšená fotka a cena.")
         else:
             ai_input = st.text_area("Vložit výsledek z AI:", height=120, key=c_key("ai"))
             if ai_input and ai_input != st.session_state.d.get("last_ai"):
@@ -631,40 +633,124 @@ with tab1:
             st.text_input(lbl_r4, value=st.session_state.d["r4"], max_chars=65, key=c_key("r4"))
 
         st.markdown("<br>", unsafe_allow_html=True)
-        col_btn1, col_btn2 = st.columns(2)
+        
+        # --- CHYTRÁ TLAČÍTKA (PŘIDÁNO MAZÁNÍ PŮVODNÍ SLOŽKY PŘI ÚPRAVĚ) ---
+        is_editing = st.session_state.d.get("loaded_from") is not None
+        
+        if is_editing:
+            st.info("✏️ **REŽIM ÚPRAV:** Pracujete s cedulkou načtenou ze skladu.")
+            c_btn1, c_btn2, c_btn3 = st.columns(3)
+            with c_btn1:
+                if st.button("💾 PŘEPSAT PŮVODNÍ", use_container_width=True, type="primary"):
+                    sync_to_d() 
+                    f_name = st.session_state.d["name"]
+                    f_img = st.session_state.d.get("img")
+                    if f_name and f_img:
+                        save_name = f_name.split(" - ")[0].strip() if " - " in f_name else f_name
+                        new_folder = clean_filename(save_name)
+                        loaded_from = st.session_state.d.get("loaded_from")
+                        
+                        # Pokud uživatel změnil název, smažeme původní složku!
+                        if loaded_from and loaded_from != new_folder:
+                            old_p = os.path.join(DB_DIR, loaded_from)
+                            if os.path.exists(old_p):
+                                shutil.rmtree(old_p)
+                                
+                        p = os.path.join(DB_DIR, new_folder)
+                        if not os.path.exists(p): os.makedirs(p)
+                        
+                        d_out = {
+                            "name": f_name, "cat": st.session_state.d["cat"],
+                            "r1": st.session_state.d["r1"], "r2": st.session_state.d["r2"],
+                            "r3": st.session_state.d["r3"], "r4": st.session_state.d["r4"],
+                            "shu": st.session_state.d["shu"]
+                        }
+                        with open(os.path.join(p, "data.json"), "w", encoding="utf-8") as f:
+                            json.dump(d_out, f, ensure_ascii=False)
+                        f_img.save(os.path.join(p, "photo.jpg"), "JPEG")
+                        
+                        st.session_state.d["loaded_from"] = new_folder
+                        st.success("✅ Cedulka úspěšně aktualizována!")
+                    else:
+                        st.error("❌ Chybí název nebo fotka!")
 
-        with col_btn1:
-            if st.button("💾 ULOŽIT DO SKLADU", use_container_width=True, type="primary"):
-                sync_to_d() 
-                f_name = st.session_state.d["name"]
-                f_img = st.session_state.d.get("img")
-                if f_name and f_img:
-                    save_name = f_name.split(" - ")[0].strip() if " - " in f_name else f_name
-                    p = os.path.join(DB_DIR, clean_filename(save_name))
-                    if not os.path.exists(p): os.makedirs(p)
-                    d_out = {
-                        "name": f_name, "cat": st.session_state.d["cat"],
-                        "r1": st.session_state.d["r1"], "r2": st.session_state.d["r2"],
-                        "r3": st.session_state.d["r3"], "r4": st.session_state.d["r4"],
-                        "shu": st.session_state.d["shu"]
+            with c_btn2:
+                if st.button("💾 ULOŽIT JAKO KOPII", use_container_width=True):
+                    sync_to_d() 
+                    f_name = st.session_state.d["name"]
+                    f_img = st.session_state.d.get("img")
+                    if f_name and f_img:
+                        save_name = f_name.split(" - ")[0].strip() if " - " in f_name else f_name
+                        new_folder = clean_filename(save_name)
+                        
+                        p = os.path.join(DB_DIR, new_folder)
+                        if not os.path.exists(p): os.makedirs(p)
+                        
+                        d_out = {
+                            "name": f_name, "cat": st.session_state.d["cat"],
+                            "r1": st.session_state.d["r1"], "r2": st.session_state.d["r2"],
+                            "r3": st.session_state.d["r3"], "r4": st.session_state.d["r4"],
+                            "shu": st.session_state.d["shu"]
+                        }
+                        with open(os.path.join(p, "data.json"), "w", encoding="utf-8") as f:
+                            json.dump(d_out, f, ensure_ascii=False)
+                        f_img.save(os.path.join(p, "photo.jpg"), "JPEG")
+                        
+                        st.session_state.d["loaded_from"] = new_folder
+                        st.success("✅ Uloženo do skladu jako nová cedulka!")
+                    else:
+                        st.error("❌ Chybí název nebo fotka!")
+
+            with c_btn3:
+                if st.button("🔄 ZAVŘÍT ÚPRAVY", use_container_width=True):
+                    st.session_state.d = {
+                        "name": "", "cat": "Ostatní", "img": None,
+                        "r1": "Stanoviště: | Zálivka: ", "r2": "Spon: | Výška: ",
+                        "r3": "Plod: | Hmotnost: ", "r4": "Použití: | Tip: ", 
+                        "shu": "", "last_ai": "", "last_name_check": "",
+                        "loaded_from": None
                     }
-                    with open(os.path.join(p, "data.json"), "w", encoding="utf-8") as f:
-                        json.dump(d_out, f, ensure_ascii=False)
-                    f_img.save(os.path.join(p, "photo.jpg"), "JPEG")
-                    st.success("✅ Uloženo do databáze!")
-                else:
-                    st.error("❌ Chybí název nebo fotka!")
+                    st.session_state.form_key = str(uuid.uuid4())
+                    st.rerun()
 
-        with col_btn2:
-            if st.button("🔄 NOVÁ (VYČISTIT)", use_container_width=True):
-                st.session_state.d = {
-                    "name": "", "cat": "Ostatní", "img": None,
-                    "r1": "Stanoviště: | Zálivka: ", "r2": "Spon: | Výška: ",
-                    "r3": "Plod: | Hmotnost: ", "r4": "Použití: | Tip: ", 
-                    "shu": "", "last_ai": "", "last_name_check": ""
-                }
-                st.session_state.form_key = str(uuid.uuid4())
-                st.rerun()
+        else:
+            col_btn1, col_btn2 = st.columns(2)
+            with col_btn1:
+                if st.button("💾 ULOŽIT DO SKLADU", use_container_width=True, type="primary"):
+                    sync_to_d() 
+                    f_name = st.session_state.d["name"]
+                    f_img = st.session_state.d.get("img")
+                    if f_name and f_img:
+                        save_name = f_name.split(" - ")[0].strip() if " - " in f_name else f_name
+                        new_folder = clean_filename(save_name)
+                        p = os.path.join(DB_DIR, new_folder)
+                        if not os.path.exists(p): os.makedirs(p)
+                        d_out = {
+                            "name": f_name, "cat": st.session_state.d["cat"],
+                            "r1": st.session_state.d["r1"], "r2": st.session_state.d["r2"],
+                            "r3": st.session_state.d["r3"], "r4": st.session_state.d["r4"],
+                            "shu": st.session_state.d["shu"]
+                        }
+                        with open(os.path.join(p, "data.json"), "w", encoding="utf-8") as f:
+                            json.dump(d_out, f, ensure_ascii=False)
+                        f_img.save(os.path.join(p, "photo.jpg"), "JPEG")
+                        
+                        st.session_state.d["loaded_from"] = new_folder
+                        st.success("✅ Uloženo do databáze! (Přepnuto do režimu úprav)")
+                    else:
+                        st.error("❌ Chybí název nebo fotka!")
+
+            with col_btn2:
+                if st.button("🔄 NOVÁ (VYČISTIT)", use_container_width=True):
+                    st.session_state.d = {
+                        "name": "", "cat": "Ostatní", "img": None,
+                        "r1": "Stanoviště: | Zálivka: ", "r2": "Spon: | Výška: ",
+                        "r3": "Plod: | Hmotnost: ", "r4": "Použití: | Tip: ", 
+                        "shu": "", "last_ai": "", "last_name_check": "",
+                        "loaded_from": None
+                    }
+                    st.session_state.form_key = str(uuid.uuid4())
+                    st.rerun()
 
     # --- NÁHLED A TISK ---
     c_name = get_current("name")
@@ -714,7 +800,6 @@ with tab1:
 with tab2:
     all_folders = [f for f in os.listdir(DB_DIR) if os.path.isdir(os.path.join(DB_DIR, f))]
     
-    # NOVÉ: Ovládací panel archivu (Hledání a Třídění)
     c_head, c_search, c_sort = st.columns([2, 2, 1])
     with c_head:
         st.header(f"📊 Přehled skladu ({len(all_folders)} položek)")
@@ -730,20 +815,17 @@ with tab2:
             if os.path.exists(path):
                 with open(path, "r", encoding="utf-8") as file:
                     info = json.load(file)
-                    # Filtrace podle hledaného slova
                     item_name = info.get('name', 'Neznámý').lower()
                     if info.get("cat", "Ostatní") == kat:
                         if search_q in item_name:
                             kat_items.append((f, info))
 
         if kat_items:
-            # NOVÉ: Abecední třídění položek uvnitř kategorie
             if sort_by == "Název (A-Z)":
                 kat_items.sort(key=lambda x: x[1].get('name', '').lower())
             else:
                 kat_items.sort(key=lambda x: x[1].get('name', '').lower(), reverse=True)
 
-            # Automatické rozevření složky, pokud uživatel něco vyhledává
             with st.expander(f"📂 {kat} ({len(kat_items)})", expanded=(bool(search_q))):
                 for f_name, info in kat_items:
                     c1, c2, c3 = st.columns([1, 3, 1])
@@ -765,6 +847,7 @@ with tab2:
                         if "shu" not in st.session_state.d: st.session_state.d["shu"] = ""
                         st.session_state.d["img"] = loaded_img
                         st.session_state.d["last_ai"] = ""
+                        st.session_state.d["loaded_from"] = f_name
                         st.session_state.form_key = str(uuid.uuid4())
                         st.session_state.show_load_msg = True
                         st.rerun()
