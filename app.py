@@ -9,7 +9,6 @@ import shutil
 import uuid
 
 # --- 1. KONFIGURACE A ABSOLUTNÍ CESTA ---
-# Aplikace si přesně zjistí, kde leží tento soubor app.py, a archiv vytvoří VŽDY vedle něj.
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_DIR = os.path.join(BASE_DIR, "archiv_cedulek")
 
@@ -19,10 +18,10 @@ if not os.path.exists(DB_DIR): os.makedirs(DB_DIR)
 
 st.set_page_config(page_title="Farma Systém - Cedulky", page_icon="🌿", layout="wide")
 
-# --- NOVÉ: BOČNÍ PANEL S INFORMACEMI O SYSTÉMU ---
+# --- BOČNÍ PANEL S INFORMACEMI O SYSTÉMU ---
 with st.sidebar:
     st.header("⚙️ Systémové informace")
-    st.info(f"📂 **Cesta k vašemu archivu:**\n\n`{DB_DIR}`\n\n*(Sem můžete překopírovat své staré složky s cedulkami, aby je aplikace znovu načetla)*")
+    st.info("📂 **Cesta k vašemu archivu:**\n\n`" + DB_DIR + "`\n\n*(Zde se nacházejí všechny vaše uložené cedulky)*")
 
 st.markdown("""
     <style>
@@ -246,7 +245,6 @@ def draw_label(name, img_plant, lines_text, shu_text, cat, font_bold, font_reg):
     else:
         y += 10
     
-    # --- SPECIÁLNÍ ROZLOŽENÍ PRO SADBU ---
     if cat == "Sadba":
         bottom_zone_y = L_H - 220 
         
@@ -275,7 +273,6 @@ def draw_label(name, img_plant, lines_text, shu_text, cat, font_bold, font_reg):
         d.rectangle([bx_x, bx_y, bx_x + bx_w, bx_y + bx_h], outline="#004D40", width=12)
         d.text((bx_x + bx_w + 30, bx_y + bx_h//2), "Kč", fill="black", anchor="lm", font=f_p)
 
-    # --- SPECIÁLNÍ ROZLOŽENÍ PRO KVĚTINY ---
     elif cat == "Květiny":
         bottom_zone_y = L_H - 240 
         
@@ -400,7 +397,6 @@ def draw_label(name, img_plant, lines_text, shu_text, cat, font_bold, font_reg):
         if part2:
             d.text((text_start_x, text_y), part2, fill="#555555", anchor="lt", font=f_type)
 
-    # --- STANDARDNÍ ROZLOŽENÍ PRO OSTATNÍ (Zelenina, Bylinky) ---
     else:
         if shu_text and shu_text.strip():
             shu_size = 70
@@ -549,7 +545,7 @@ with tab1:
                 if st.session_state.d.get("cat") not in KATEGORIE: st.session_state.d["cat"] = "Ostatní"
                 if "shu" not in st.session_state.d: st.session_state.d["shu"] = "" 
                 st.session_state.d["img"] = loaded_img
-                st.session_state.d["last_ai"] = ""
+                st.session_state.d["last_ai"] = loaded_d.get("raw_ai", "")
                 st.session_state.d["loaded_from"] = folder_check
                 st.session_state.form_key = str(uuid.uuid4())
                 st.session_state.show_load_msg = True
@@ -601,8 +597,10 @@ with tab1:
         if st.session_state.d["cat"] == "Sadba":
             st.success("🌱 **Režim Sadba:** Bude vytištěn pouze velký název, maximálně zvětšená fotka a cena.")
         else:
-            ai_input = st.text_area("Vložit výsledek z AI:", height=120, key=c_key("ai"))
-            if ai_input and ai_input != st.session_state.d.get("last_ai"):
+            ai_val = st.session_state.d.get("last_ai", "")
+            ai_input = st.text_area("Vložit výsledek z AI:", value=ai_val, height=120, key=c_key("ai"))
+            
+            if ai_input and ai_input != ai_val:
                 sync_to_d() 
                 st.session_state.d["last_ai"] = ai_input
                 clean_txt = ai_input.replace("**", "").replace("*", "")
@@ -667,14 +665,15 @@ with tab1:
                             "name": f_name, "cat": st.session_state.d["cat"],
                             "r1": st.session_state.d["r1"], "r2": st.session_state.d["r2"],
                             "r3": st.session_state.d["r3"], "r4": st.session_state.d["r4"],
-                            "shu": st.session_state.d["shu"]
+                            "shu": st.session_state.d["shu"],
+                            "raw_ai": st.session_state.d.get("last_ai", "")
                         }
                         with open(os.path.join(p, "data.json"), "w", encoding="utf-8") as f:
                             json.dump(d_out, f, ensure_ascii=False)
                         f_img.save(os.path.join(p, "photo.jpg"), "JPEG")
                         
                         st.session_state.d["loaded_from"] = new_folder
-                        st.success("✅ Cedulka úspěšně aktualizována!")
+                        st.success("✅ Cedulka úspěšně aktualizována a původní AI text zálohován!")
                     else:
                         st.error("❌ Chybí název nebo fotka!")
 
@@ -694,7 +693,8 @@ with tab1:
                             "name": f_name, "cat": st.session_state.d["cat"],
                             "r1": st.session_state.d["r1"], "r2": st.session_state.d["r2"],
                             "r3": st.session_state.d["r3"], "r4": st.session_state.d["r4"],
-                            "shu": st.session_state.d["shu"]
+                            "shu": st.session_state.d["shu"],
+                            "raw_ai": st.session_state.d.get("last_ai", "")
                         }
                         with open(os.path.join(p, "data.json"), "w", encoding="utf-8") as f:
                             json.dump(d_out, f, ensure_ascii=False)
@@ -733,14 +733,15 @@ with tab1:
                             "name": f_name, "cat": st.session_state.d["cat"],
                             "r1": st.session_state.d["r1"], "r2": st.session_state.d["r2"],
                             "r3": st.session_state.d["r3"], "r4": st.session_state.d["r4"],
-                            "shu": st.session_state.d["shu"]
+                            "shu": st.session_state.d["shu"],
+                            "raw_ai": st.session_state.d.get("last_ai", "")
                         }
                         with open(os.path.join(p, "data.json"), "w", encoding="utf-8") as f:
                             json.dump(d_out, f, ensure_ascii=False)
                         f_img.save(os.path.join(p, "photo.jpg"), "JPEG")
                         
                         st.session_state.d["loaded_from"] = new_folder
-                        st.success("✅ Uloženo do databáze! (Přepnuto do režimu úprav)")
+                        st.success("✅ Uloženo do databáze včetně původního AI textu! (Přepnuto do režimu úprav)")
                     else:
                         st.error("❌ Chybí název nebo fotka!")
 
@@ -772,7 +773,6 @@ with tab1:
             valid_lines = [r for r in lines if r.strip() and not r.endswith(": | ") and r.strip() != "✿" and r.strip() != "☀" and r.strip() != "💧"]
             if not valid_lines: valid_lines = lines
 
-            # Vygenerování hlavní cedulky
             single_lbl = draw_label(c_name, c_img, valid_lines, c_shu, c_cat, f_b, f_r)
 
             canvas_4 = Image.new('RGB', (2480, 3508), 'white')
@@ -793,7 +793,7 @@ with tab1:
             canvas_2.save(pdf_buf_2, format="PDF")
 
             c_img_col, c_dl_col = st.columns([1.5, 1])
-            c_img_col.image(canvas_4, use_column_width=True) 
+            c_img_col.image(canvas_4, use_container_width=True) 
             
             with c_dl_col:
                 down_name = clean_filename(c_name.split("-")[0] if "-" in c_name else c_name)
@@ -851,7 +851,9 @@ with tab2:
                         if st.session_state.d.get("cat") not in KATEGORIE: st.session_state.d["cat"] = "Ostatní"
                         if "shu" not in st.session_state.d: st.session_state.d["shu"] = ""
                         st.session_state.d["img"] = loaded_img
-                        st.session_state.d["last_ai"] = ""
+                        
+                        st.session_state.d["last_ai"] = loaded_d.get("raw_ai", "")
+                        
                         st.session_state.d["loaded_from"] = f_name
                         st.session_state.form_key = str(uuid.uuid4())
                         st.session_state.show_load_msg = True
