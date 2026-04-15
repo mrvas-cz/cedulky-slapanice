@@ -468,9 +468,17 @@ def sync_to_d():
     st.session_state.d["r2"] = get_current("r2")
     st.session_state.d["r3"] = get_current("r3")
     st.session_state.d["r4"] = get_current("r4")
+    # SHU se nyní tahá bezpečně pro všechny
     st.session_state.d["shu"] = get_current("shu")
 
 def apply_template(cat):
+    # OPRAVA CHYBY: Nesmazat uživateli text, pokud si ho už vyplnil pomocí AI
+    current_r1 = st.session_state.d.get("r1", "")
+    is_default_or_empty = current_r1 in ["", "Stanoviště: | Zálivka: ", "Vzrůst: Převis 60 cm | Typ: Letnička"]
+    
+    if not is_default_or_empty:
+        return # Uživatel už má vlastní text, nebudeme mu ho přepisovat!
+
     if cat == "Bylinky":
         st.session_state.d["r1"] = "Stanoviště: | Zálivka: "
         st.session_state.d["r2"] = "Spon: | Výška: "
@@ -539,7 +547,7 @@ with tab1:
         folder_check = clean_filename(curr_name.split("-")[0].strip() if "-" in curr_name else curr_name)
         if curr_name and os.path.exists(os.path.join(DB_DIR, folder_check)) and st.session_state.d.get("loaded_from") != folder_check:
             st.warning("⚠️ Odrůda již v archivu existuje!")
-            if st.button("📂 Načíst existující data z archivu", type="primary"):
+            if st.button("📂 Načíst existující data z archivu", type="primary", width="stretch"):
                 loaded_d, loaded_img = load_label_data(folder_check)
                 st.session_state.d.update(loaded_d)
                 if st.session_state.d.get("cat") not in KATEGORIE: st.session_state.d["cat"] = "Ostatní"
@@ -620,10 +628,9 @@ with tab1:
                 st.session_state.form_key = str(uuid.uuid4())
                 st.rerun()
 
+            # OPRAVA CHYBY SHU: Text input funguje bezpečně, postará se o něj sync_to_d()
             if st.session_state.d["cat"] == "Papriky - Pálivé":
-                st.session_state.d["shu"] = st.text_input("🌶️ Pálivost (SHU):", value=st.session_state.d.get("shu", ""), max_chars=65, key=c_key("shu"))
-            else:
-                st.session_state.d["shu"] = get_current("shu")
+                st.text_input("🌶️ Pálivost (SHU):", value=st.session_state.d.get("shu", ""), max_chars=65, key=c_key("shu"))
             
             c = st.session_state.d["cat"]
             lbl_r1 = "Řádek 1 (Vzrůst - napište Převis/Polopřevis/Vzpřímená!):" if c == "Květiny" else "Řádek 1 (Stanoviště/Zálivka):"
@@ -644,7 +651,7 @@ with tab1:
             st.info("✏️ **REŽIM ÚPRAV:** Pracujete s cedulkou načtenou ze skladu.")
             c_btn1, c_btn2, c_btn3 = st.columns(3)
             with c_btn1:
-                if st.button("💾 PŘEPSAT PŮVODNÍ", use_container_width=True, type="primary"):
+                if st.button("💾 PŘEPSAT PŮVODNÍ", width="stretch", type="primary"):
                     sync_to_d() 
                     f_name = st.session_state.d["name"]
                     f_img = st.session_state.d.get("img")
@@ -678,7 +685,7 @@ with tab1:
                         st.error("❌ Chybí název nebo fotka!")
 
             with c_btn2:
-                if st.button("💾 ULOŽIT JAKO KOPII", use_container_width=True):
+                if st.button("💾 ULOŽIT JAKO KOPII", width="stretch"):
                     sync_to_d() 
                     f_name = st.session_state.d["name"]
                     f_img = st.session_state.d.get("img")
@@ -706,7 +713,7 @@ with tab1:
                         st.error("❌ Chybí název nebo fotka!")
 
             with c_btn3:
-                if st.button("🔄 ZAVŘÍT ÚPRAVY", use_container_width=True):
+                if st.button("🔄 ZAVŘÍT ÚPRAVY", width="stretch"):
                     st.session_state.d = {
                         "name": "", "cat": "Ostatní", "img": None,
                         "r1": "Stanoviště: | Zálivka: ", "r2": "Spon: | Výška: ",
@@ -720,7 +727,7 @@ with tab1:
         else:
             col_btn1, col_btn2 = st.columns(2)
             with col_btn1:
-                if st.button("💾 ULOŽIT DO SKLADU", use_container_width=True, type="primary"):
+                if st.button("💾 ULOŽIT DO SKLADU", width="stretch", type="primary"):
                     sync_to_d() 
                     f_name = st.session_state.d["name"]
                     f_img = st.session_state.d.get("img")
@@ -746,7 +753,7 @@ with tab1:
                         st.error("❌ Chybí název nebo fotka!")
 
             with col_btn2:
-                if st.button("🔄 NOVÁ (VYČISTIT)", use_container_width=True):
+                if st.button("🔄 NOVÁ (VYČISTIT)", width="stretch"):
                     st.session_state.d = {
                         "name": "", "cat": "Ostatní", "img": None,
                         "r1": "Stanoviště: | Zálivka: ", "r2": "Spon: | Výška: ",
@@ -793,13 +800,13 @@ with tab1:
             canvas_2.save(pdf_buf_2, format="PDF")
 
             c_img_col, c_dl_col = st.columns([1.5, 1])
-            c_img_col.image(canvas_4, use_container_width=True) 
+            c_img_col.image(canvas_4, width="stretch") # OPRAVENO VAROVÁNÍ!
             
             with c_dl_col:
                 down_name = clean_filename(c_name.split("-")[0] if "-" in c_name else c_name)
-                st.download_button("📥 STÁHNOUT PDF: 4 CEDULKY (Klasika A6)", pdf_buf_4.getvalue(), f"{down_name}_4x_A6.pdf", mime="application/pdf", type="primary", use_container_width=True)
+                st.download_button("📥 STÁHNOUT PDF: 4 CEDULKY (Klasika A6)", pdf_buf_4.getvalue(), f"{down_name}_4x_A6.pdf", mime="application/pdf", type="primary", width="stretch") # OPRAVENO VAROVÁNÍ!
                 st.markdown("<br>", unsafe_allow_html=True)
-                st.download_button("📥 STÁHNOUT PDF: 2 CEDULKY (Velké A5)", pdf_buf_2.getvalue(), f"{down_name}_2x_A5.pdf", mime="application/pdf", type="secondary", use_container_width=True)
+                st.download_button("📥 STÁHNOUT PDF: 2 CEDULKY (Velké A5)", pdf_buf_2.getvalue(), f"{down_name}_2x_A5.pdf", mime="application/pdf", type="secondary", width="stretch") # OPRAVENO VAROVÁNÍ!
 
 # --- ZÁLOŽKA 2: NOVÝ CHYTRÝ ARCHIV S FILTRY ---
 with tab2:
