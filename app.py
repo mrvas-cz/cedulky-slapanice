@@ -16,7 +16,8 @@ KATEGORIE = ["Papriky - Sladké", "Papriky - Pálivé", "Rajčata", "Sadba", "By
 
 if not os.path.exists(DB_DIR): os.makedirs(DB_DIR)
 
-st.set_page_config(page_title="Farma Systém - Cedulky", page_icon="🌿", layout="wide")
+# Nový název v záložce prohlížeče
+st.set_page_config(page_title="Šlapánský Cedulátor 3000", page_icon="🌿", layout="wide")
 
 # --- BOČNÍ PANEL S INFORMACEMI O SYSTÉMU ---
 with st.sidebar:
@@ -468,16 +469,14 @@ def sync_to_d():
     st.session_state.d["r2"] = get_current("r2")
     st.session_state.d["r3"] = get_current("r3")
     st.session_state.d["r4"] = get_current("r4")
-    # SHU se nyní tahá bezpečně pro všechny
     st.session_state.d["shu"] = get_current("shu")
 
 def apply_template(cat):
-    # OPRAVA CHYBY: Nesmazat uživateli text, pokud si ho už vyplnil pomocí AI
     current_r1 = st.session_state.d.get("r1", "")
     is_default_or_empty = current_r1 in ["", "Stanoviště: | Zálivka: ", "Vzrůst: Převis 60 cm | Typ: Letnička"]
     
     if not is_default_or_empty:
-        return # Uživatel už má vlastní text, nebudeme mu ho přepisovat!
+        return 
 
     if cat == "Bylinky":
         st.session_state.d["r1"] = "Stanoviště: | Zálivka: "
@@ -501,7 +500,9 @@ def apply_template(cat):
         st.session_state.d["r4"] = "Použití: | Tip: "
 
 # --- 4. APLIKACE A UI ---
-st.title("🌿 Farmářský Systém: Generátor Cedulek")
+# Tady je tvůj nový super název!
+st.title("🌿 Šlapánský Cedulátor 3000")
+st.markdown("#### *generátor cedulek*")
 
 if st.session_state.show_load_msg:
     st.success("✅ Cedulka úspěšně načtena! Nyní jste v REŽIMU ÚPRAV.")
@@ -611,24 +612,42 @@ with tab1:
             if ai_input and ai_input != ai_val:
                 sync_to_d() 
                 st.session_state.d["last_ai"] = ai_input
-                clean_txt = ai_input.replace("**", "").replace("*", "")
                 
-                for line in clean_txt.split('\n'):
-                    if "PŘESNÝ NÁZEV:" in line.upper():
-                        possible_name = line.split(":", 1)[1].strip()
-                        if possible_name and " - " not in st.session_state.d["name"]: 
-                            st.session_state.d["name"] = possible_name
-                    elif "Ř1:" in line: st.session_state.d["r1"] = line.split("Ř1:")[1].strip()[:65]
-                    elif "Ř2:" in line: st.session_state.d["r2"] = line.split("Ř2:")[1].strip()[:65]
-                    elif "Ř3:" in line: st.session_state.d["r3"] = line.split("Ř3:")[1].strip()[:65]
-                    elif "Ř4:" in line: st.session_state.d["r4"] = line.split("Ř4:")[1].strip()[:65]
-                    elif "Ř5:" in line or "PÁLIVOST:" in line.upper(): 
-                        st.session_state.d["shu"] = line.split(":", 1)[1].strip()[:65]
+                lines = ai_input.replace("**", "").replace("*", "").replace("\r", "\n").split('\n')
+                
+                for line in lines:
+                    line_up = line.upper().strip()
+                    
+                    if line_up.startswith("PŘESNÝ NÁZEV:"):
+                        parts = line.split(":", 1)
+                        if len(parts) > 1:
+                            possible_name = parts[1].strip()
+                            if possible_name and " - " not in st.session_state.d["name"]:
+                                st.session_state.d["name"] = possible_name
+                    
+                    elif line_up.startswith("Ř1:") or line_up.startswith("R1:"):
+                        parts = line.split(":", 1)
+                        if len(parts) > 1: st.session_state.d["r1"] = parts[1].strip()[:65]
+                        
+                    elif line_up.startswith("Ř2:") or line_up.startswith("R2:"):
+                        parts = line.split(":", 1)
+                        if len(parts) > 1: st.session_state.d["r2"] = parts[1].strip()[:65]
+                        
+                    elif line_up.startswith("Ř3:") or line_up.startswith("R3:"):
+                        parts = line.split(":", 1)
+                        if len(parts) > 1: st.session_state.d["r3"] = parts[1].strip()[:65]
+                        
+                    elif line_up.startswith("Ř4:") or line_up.startswith("R4:"):
+                        parts = line.split(":", 1)
+                        if len(parts) > 1: st.session_state.d["r4"] = parts[1].strip()[:65]
+                        
+                    elif line_up.startswith("Ř5:") or line_up.startswith("R5:") or line_up.startswith("PÁLIVOST:"):
+                        parts = line.split(":", 1)
+                        if len(parts) > 1: st.session_state.d["shu"] = parts[1].strip()[:65]
                 
                 st.session_state.form_key = str(uuid.uuid4())
                 st.rerun()
 
-            # OPRAVA CHYBY SHU: Text input funguje bezpečně, postará se o něj sync_to_d()
             if st.session_state.d["cat"] == "Papriky - Pálivé":
                 st.text_input("🌶️ Pálivost (SHU):", value=st.session_state.d.get("shu", ""), max_chars=65, key=c_key("shu"))
             
@@ -651,7 +670,7 @@ with tab1:
             st.info("✏️ **REŽIM ÚPRAV:** Pracujete s cedulkou načtenou ze skladu.")
             c_btn1, c_btn2, c_btn3 = st.columns(3)
             with c_btn1:
-                if st.button("💾 PŘEPSAT PŮVODNÍ", width="stretch", type="primary"):
+                if st.button("💾 PŘEPSAT PŮVODNÍ", type="primary", width="stretch"):
                     sync_to_d() 
                     f_name = st.session_state.d["name"]
                     f_img = st.session_state.d.get("img")
@@ -727,7 +746,7 @@ with tab1:
         else:
             col_btn1, col_btn2 = st.columns(2)
             with col_btn1:
-                if st.button("💾 ULOŽIT DO SKLADU", width="stretch", type="primary"):
+                if st.button("💾 ULOŽIT DO SKLADU", type="primary", width="stretch"):
                     sync_to_d() 
                     f_name = st.session_state.d["name"]
                     f_img = st.session_state.d.get("img")
@@ -800,13 +819,13 @@ with tab1:
             canvas_2.save(pdf_buf_2, format="PDF")
 
             c_img_col, c_dl_col = st.columns([1.5, 1])
-            c_img_col.image(canvas_4, width="stretch") # OPRAVENO VAROVÁNÍ!
+            c_img_col.image(canvas_4, width="stretch")
             
             with c_dl_col:
                 down_name = clean_filename(c_name.split("-")[0] if "-" in c_name else c_name)
-                st.download_button("📥 STÁHNOUT PDF: 4 CEDULKY (Klasika A6)", pdf_buf_4.getvalue(), f"{down_name}_4x_A6.pdf", mime="application/pdf", type="primary", width="stretch") # OPRAVENO VAROVÁNÍ!
+                st.download_button("📥 STÁHNOUT PDF: 4 CEDULKY (Klasika A6)", pdf_buf_4.getvalue(), f"{down_name}_4x_A6.pdf", mime="application/pdf", type="primary", width="stretch")
                 st.markdown("<br>", unsafe_allow_html=True)
-                st.download_button("📥 STÁHNOUT PDF: 2 CEDULKY (Velké A5)", pdf_buf_2.getvalue(), f"{down_name}_2x_A5.pdf", mime="application/pdf", type="secondary", width="stretch") # OPRAVENO VAROVÁNÍ!
+                st.download_button("📥 STÁHNOUT PDF: 2 CEDULKY (Velké A5)", pdf_buf_2.getvalue(), f"{down_name}_2x_A5.pdf", mime="application/pdf", type="secondary", width="stretch")
 
 # --- ZÁLOŽKA 2: NOVÝ CHYTRÝ ARCHIV S FILTRY ---
 with tab2:
