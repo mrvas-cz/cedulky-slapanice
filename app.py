@@ -585,8 +585,8 @@ with tab1:
 
                 search_name = curr_name.split(" - ")[0].strip() if " - " in curr_name else curr_name
 
-                # OPRAVA: Vrácen "PŘESNÝ NÁZEV" a přidány 3 ZAJÍMAVOSTI do skryté encyklopedie!
-                ai_prompt = f"Jsi odborník. Hledáme odrůdu: {search_name}.\n!!! KRITICKÁ PRAVIDLA:\n1. OVĚŘ A OPRAV NÁZEV: Zjisti přesný oficiální název (např. 'rajče start' -> 'Rajče Start F1').\n2. PIŠ EXTRÉMNĚ STRUČNĚ (max 6 slov na řádek pro řádky 1-5).\n3. PIŠ LAICKY PRO BĚŽNÉHO SPOTŘEBITELE. VYNECH CIZÍ A ODBORNÁ SLOVA. !!!\nVypiš to přesně takto:\nPŘESNÝ NÁZEV: (doplň oficiální název)\n{specifics}\nZAJÍMAVOSTI:\n- (1. zajímavost o pěstování, původu nebo chuti)\n- (2. zajímavost)\n- (3. zajímavost)"
+                # OPRAVA: Vynucené dohledávání přívlastku F1 u všech odrůd!
+                ai_prompt = f"Jsi odborník. Hledáme odrůdu: {search_name}.\n!!! KRITICKÁ PRAVIDLA:\n1. OVĚŘ A OPRAV NÁZEV: Zjisti přesný oficiální název. PEČLIVĚ ZKONTROLUJ, ZDA MÁ ODRŮDA PŘÍVLASTEK 'F1' (hybrid). Pokud ano, bezpodmínečně ho přidej na konec názvu (např. 'Rajče Start F1').\n2. PIŠ EXTRÉMNĚ STRUČNĚ (max 6 slov na řádek pro řádky 1-5).\n3. PIŠ LAICKY PRO BĚŽNÉHO SPOTŘEBITELE. VYNECH CIZÍ A ODBORNÁ SLOVA. !!!\nVypiš to přesně takto:\nPŘESNÝ NÁZEV: (doplň oficiální název včetně F1, pokud to je F1)\n{specifics}\nZAJÍMAVOSTI:\n- (1. zajímavost o pěstování, původu nebo chuti)\n- (2. zajímavost)\n- (3. zajímavost)"
                 st.code(ai_prompt, language="text")
 
             search_q = (curr_name.split(" - ")[0].strip() if " - " in curr_name else curr_name).replace(" ", "+")
@@ -618,7 +618,6 @@ with tab1:
                     line_up = line.upper().strip()
                     
                     if line_up.startswith("PŘESNÝ NÁZEV:"):
-                        # OPRAVA: Znovu povoleno čtení a úprava přesného názvu
                         parts = line.split(":", 1)
                         if len(parts) > 1:
                             possible_name = parts[1].strip()
