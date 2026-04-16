@@ -446,6 +446,32 @@ def draw_label(name, img_plant, lines_text, shu_text, cat, font_bold, font_reg):
     d.rectangle([0, 0, L_W-1, L_H-1], outline="#EEEEEE", width=3)
     return lbl
 
+# --- NOVÁ FUNKCE PRO RYCHLÉ VYTVOŘENÍ PDF (SDÍLENÁ PRO OBĚ ZÁLOŽKY) ---
+def generate_pdfs(c_name, c_img, lines_text, c_shu, c_cat, font_bold, font_reg):
+    valid_lines = [r for r in lines_text if r.strip() and not r.endswith(": | ") and r.strip() != "✿" and r.strip() != "☀" and r.strip() != "💧"]
+    if not valid_lines: valid_lines = lines_text
+
+    single_lbl = draw_label(c_name, c_img, valid_lines, c_shu, c_cat, font_bold, font_reg)
+
+    canvas_4 = Image.new('RGB', (2480, 3508), 'white')
+    canvas_4.paste(single_lbl, (0, 0))
+    canvas_4.paste(single_lbl, (1240, 0))
+    canvas_4.paste(single_lbl, (0, 1754))
+    canvas_4.paste(single_lbl, (1240, 1754))
+
+    pdf_buf_4 = io.BytesIO()
+    canvas_4.save(pdf_buf_4, format="PDF")
+
+    canvas_2 = Image.new('RGB', (3508, 2480), 'white')
+    single_lbl_a5 = single_lbl.resize((1754, 2480), Image.Resampling.LANCZOS)
+    canvas_2.paste(single_lbl_a5, (0, 0))
+    canvas_2.paste(single_lbl_a5, (1754, 0))
+
+    pdf_buf_2 = io.BytesIO()
+    canvas_2.save(pdf_buf_2, format="PDF")
+
+    return canvas_4, pdf_buf_4, pdf_buf_2
+
 # --- 3. BEZPEČNÁ PAMĚŤ ---
 if 'form_key' not in st.session_state: st.session_state.form_key = str(uuid.uuid4())
 if 'd' not in st.session_state:
@@ -588,7 +614,6 @@ with tab1:
                 ai_prompt = f"Jsi odborník. Hledáme odrůdu: {search_name}.\n!!! KRITICKÁ PRAVIDLA:\n1. OVĚŘ A OPRAV NÁZEV: Zjisti přesný oficiální název. PEČLIVĚ ZKONTROLUJ, ZDA MÁ ODRŮDA PŘÍVLASTEK 'F1' (hybrid). Pokud ano, bezpodmínečně ho přidej na konec názvu (např. 'Rajče Start F1').\n2. PIŠ EXTRÉMNĚ STRUČNĚ (max 6 slov na řádek pro řádky 1-5).\n3. PIŠ LAICKY PRO BĚŽNÉHO SPOTŘEBITELE. VYNECH CIZÍ A ODBORNÁ SLOVA. !!!\nVypiš to přesně takto:\nPŘESNÝ NÁZEV: (doplň oficiální název včetně F1, pokud to je F1)\n{specifics}\nZAJÍMAVOSTI:\n- (1. zajímavost o pěstování, původu nebo chuti)\n- (2. zajímavost)\n- (3. zajímavost)"
                 st.code(ai_prompt, language="text")
 
-            # --- OPRAVA ODKAZŮ ZDE ---
             search_q = (curr_name.split(" - ")[0].strip() if " - " in curr_name else curr_name).replace(" ", "+")
             st.markdown(f"🔍 [Google Obrázky (Sazenice / Profi)](https://google.cz/search?tbm=isch&q={search_q}+plant+seedling+macro+white+background) | 🌳 [Google Obrázky (Dospělá rostlina / Botanická)](https://google.cz/search?tbm=isch&q={search_q}+latinský+název+rostlina)")
 
@@ -795,27 +820,7 @@ with tab1:
             f_b, f_r = get_czech_font("Bold"), get_czech_font("Regular")
             lines = [get_current("r1"), get_current("r2"), get_current("r3"), get_current("r4")]
             
-            valid_lines = [r for r in lines if r.strip() and not r.endswith(": | ") and r.strip() != "✿" and r.strip() != "☀" and r.strip() != "💧"]
-            if not valid_lines: valid_lines = lines
-
-            single_lbl = draw_label(c_name, c_img, valid_lines, c_shu, c_cat, f_b, f_r)
-
-            canvas_4 = Image.new('RGB', (2480, 3508), 'white')
-            canvas_4.paste(single_lbl, (0, 0))
-            canvas_4.paste(single_lbl, (1240, 0))
-            canvas_4.paste(single_lbl, (0, 1754))
-            canvas_4.paste(single_lbl, (1240, 1754))
-            
-            pdf_buf_4 = io.BytesIO()
-            canvas_4.save(pdf_buf_4, format="PDF")
-
-            canvas_2 = Image.new('RGB', (3508, 2480), 'white')
-            single_lbl_a5 = single_lbl.resize((1754, 2480), Image.Resampling.LANCZOS)
-            canvas_2.paste(single_lbl_a5, (0, 0))
-            canvas_2.paste(single_lbl_a5, (1754, 0))
-            
-            pdf_buf_2 = io.BytesIO()
-            canvas_2.save(pdf_buf_2, format="PDF")
+            canvas_4, pdf_buf_4, pdf_buf_2 = generate_pdfs(c_name, c_img, lines, c_shu, c_cat, f_b, f_r)
 
             c_img_col, c_dl_col = st.columns([1.5, 1])
             c_img_col.image(canvas_4, width="stretch")
@@ -826,7 +831,7 @@ with tab1:
                 st.markdown("<br>", unsafe_allow_html=True)
                 st.download_button("📥 STÁHNOUT PDF: 2 CEDULKY (Velké A5)", pdf_buf_2.getvalue(), f"{down_name}_2x_A5.pdf", mime="application/pdf", type="secondary", width="stretch")
 
-# --- ZÁLOŽKA 2: NOVÝ CHYTRÝ ARCHIV S FILTRY ---
+# --- ZÁLOŽKA 2: NOVÝ CHYTRÝ ARCHIV S FILTRY A TISKEM ---
 with tab2:
     all_folders = [f for f in os.listdir(DB_DIR) if os.path.isdir(os.path.join(DB_DIR, f))]
     
@@ -858,9 +863,10 @@ with tab2:
 
             with st.expander(f"📂 {kat} ({len(kat_items)})", expanded=(bool(search_q))):
                 for f_name, info in kat_items:
-                    c1, c2, c3 = st.columns([1, 3, 1])
+                    c1, c2, c3 = st.columns([1, 2, 2.5])
                     img_p = os.path.join(DB_DIR, f_name, "photo.jpg")
-                    if os.path.exists(img_p): c1.image(img_p, width=120)
+                    has_img = os.path.exists(img_p)
+                    if has_img: c1.image(img_p, width=120)
 
                     disp_name = info.get('name', 'Neznámý')
                     if " - " in disp_name:
@@ -870,20 +876,52 @@ with tab2:
                     if info.get('cat') != "Sadba":
                         c2.caption(f"{info.get('r1', '')} \n{info.get('r2', '')}")
 
-                    if c3.button("✏️ Načíst do editoru", key=f"load_{f_name}"):
+                    # --- TLAČÍTKA V ARCHIVU ---
+                    btn_col1, btn_col2, btn_col3 = c3.columns(3)
+                    
+                    if btn_col1.button("✏️ Upravit", key=f"load_{f_name}", width="stretch"):
                         loaded_d, loaded_img = load_label_data(f_name)
                         st.session_state.d.update(loaded_d)
                         if st.session_state.d.get("cat") not in KATEGORIE: st.session_state.d["cat"] = "Ostatní"
                         if "shu" not in st.session_state.d: st.session_state.d["shu"] = ""
                         st.session_state.d["img"] = loaded_img
-                        
                         st.session_state.d["last_ai"] = loaded_d.get("raw_ai", "")
-                        
                         st.session_state.d["loaded_from"] = f_name
                         st.session_state.form_key = str(uuid.uuid4())
                         st.session_state.show_load_msg = True
                         st.rerun()
 
-                    if c3.button("🗑️ Smazat", key=f"del_{f_name}", type="primary"):
+                    # Zde je to kouzlo - Rychlý tisk rovnou z Archivu!
+                    if btn_col2.button("🖨️ Tisk", key=f"prnt_{f_name}", width="stretch"):
+                        st.session_state[f"show_print_{f_name}"] = not st.session_state.get(f"show_print_{f_name}", False)
+                        st.rerun()
+
+                    if btn_col3.button("🗑️ Smazat", key=f"del_{f_name}", width="stretch"):
                         shutil.rmtree(os.path.join(DB_DIR, f_name))
                         st.rerun()
+
+                    # --- ZOBRAZENÍ TISKÁRNY PRO KONKRÉTNÍ POLOŽKU ---
+                    if st.session_state.get(f"show_print_{f_name}"):
+                        with st.container():
+                            st.markdown("---")
+                            with st.spinner(f"Generuji PDF pro {disp_name}..."):
+                                p_name = info.get('name', 'Neznámý')
+                                p_cat = info.get('cat', 'Ostatní')
+                                p_shu = info.get('shu', '')
+                                p_lines = [info.get('r1', ''), info.get('r2', ''), info.get('r3', ''), info.get('r4', '')]
+                                p_img = Image.open(img_p).convert("RGB") if has_img else None
+                                
+                                if p_img and p_name:
+                                    f_b, f_r = get_czech_font("Bold"), get_czech_font("Regular")
+                                    cv4, pb4, pb2 = generate_pdfs(p_name, p_img, p_lines, p_shu, p_cat, f_b, f_r)
+                                    
+                                    c_prev, c_dwn = st.columns([1, 1])
+                                    c_prev.image(cv4, width="stretch")
+                                    
+                                    dwn_name = clean_filename(p_name.split("-")[0] if "-" in p_name else p_name)
+                                    c_dwn.download_button("📥 STÁHNOUT 4 CEDULKY (A6)", pb4.getvalue(), f"{dwn_name}_4x_A6.pdf", mime="application/pdf", type="primary", key=f"d4_{f_name}", width="stretch")
+                                    c_dwn.markdown("<br>", unsafe_allow_html=True)
+                                    c_dwn.download_button("📥 STÁHNOUT 2 CEDULKY (A5)", pb2.getvalue(), f"{dwn_name}_2x_A5.pdf", mime="application/pdf", type="secondary", key=f"d2_{f_name}", width="stretch")
+                                else:
+                                    st.error("Chybí obrázek nebo název, nelze generovat tisk.")
+                            st.markdown("---")
