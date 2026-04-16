@@ -585,12 +585,12 @@ with tab1:
 
                 search_name = curr_name.split(" - ")[0].strip() if " - " in curr_name else curr_name
 
-                # OPRAVA: Vynucené dohledávání přívlastku F1 u všech odrůd!
                 ai_prompt = f"Jsi odborník. Hledáme odrůdu: {search_name}.\n!!! KRITICKÁ PRAVIDLA:\n1. OVĚŘ A OPRAV NÁZEV: Zjisti přesný oficiální název. PEČLIVĚ ZKONTROLUJ, ZDA MÁ ODRŮDA PŘÍVLASTEK 'F1' (hybrid). Pokud ano, bezpodmínečně ho přidej na konec názvu (např. 'Rajče Start F1').\n2. PIŠ EXTRÉMNĚ STRUČNĚ (max 6 slov na řádek pro řádky 1-5).\n3. PIŠ LAICKY PRO BĚŽNÉHO SPOTŘEBITELE. VYNECH CIZÍ A ODBORNÁ SLOVA. !!!\nVypiš to přesně takto:\nPŘESNÝ NÁZEV: (doplň oficiální název včetně F1, pokud to je F1)\n{specifics}\nZAJÍMAVOSTI:\n- (1. zajímavost o pěstování, původu nebo chuti)\n- (2. zajímavost)\n- (3. zajímavost)"
                 st.code(ai_prompt, language="text")
 
+            # --- OPRAVA ODKAZŮ ZDE ---
             search_q = (curr_name.split(" - ")[0].strip() if " - " in curr_name else curr_name).replace(" ", "+")
-            st.markdown(f"🔍 [Obrázky Google](https://google.cz/search?tbm=isch&q={search_q}+plant+seedling+macro+white+background) | [Data Itálie](https://translate.google.com/translate?sl=auto&tl=cs&u=https://www.google.com/search?q={search_q}+varieta+peso) | [Data Nizozemí](https://translate.google.com/translate?sl=auto&tl=cs&u=https://www.google.com/search?q={search_q}+ras+kenmerken)")
+            st.markdown(f"🔍 [Google Obrázky (Sazenice / Profi)](https://google.cz/search?tbm=isch&q={search_q}+plant+seedling+macro+white+background) | 🌳 [Google Obrázky (Dospělá rostlina / Botanická)](https://google.cz/search?tbm=isch&q={search_q}+latinský+název+rostlina)")
 
         up_file = st.file_uploader("📸 Nahrát staženou fotku:", type=["jpg", "png", "jpeg"], key=c_key("img_up"))
         if up_file:
