@@ -16,7 +16,6 @@ KATEGORIE = ["Papriky - Sladké", "Papriky - Pálivé", "Rajčata", "Sadba", "By
 
 if not os.path.exists(DB_DIR): os.makedirs(DB_DIR)
 
-# Nový název v záložce prohlížeče
 st.set_page_config(page_title="Šlapánský Cedulátor 3000", page_icon="🌿", layout="wide")
 
 # --- BOČNÍ PANEL S INFORMACEMI O SYSTÉMU ---
@@ -500,7 +499,6 @@ def apply_template(cat):
         st.session_state.d["r4"] = "Použití: | Tip: "
 
 # --- 4. APLIKACE A UI ---
-# Tady je tvůj nový super název!
 st.title("🌿 Šlapánský Cedulátor 3000")
 st.markdown("#### *generátor cedulek*")
 
@@ -587,7 +585,8 @@ with tab1:
 
                 search_name = curr_name.split(" - ")[0].strip() if " - " in curr_name else curr_name
 
-                ai_prompt = f"Jsi odborník. Hledáme odrůdu: {search_name}.\n!!! KRITICKÁ PRAVIDLA:\n1. OVĚŘ A OPRAV NÁZEV: Zjisti přesný oficiální název (např. 'rajče start' -> 'Rajče Start F1').\n2. PIŠ EXTRÉMNĚ STRUČNĚ (max 6 slov na řádek).\n3. PIŠ LAICKY PRO BĚŽNÉHO SPOTŘEBITELE. VYNECH VŠECHNA CIZÍ NEBO ODBORNÁ SLOVA. !!!\nVypiš to přesně takto:\nPŘESNÝ NÁZEV: (doplň oficiální název)\n{specifics}"
+                # OPRAVA: Vrácen "PŘESNÝ NÁZEV" a přidány 3 ZAJÍMAVOSTI do skryté encyklopedie!
+                ai_prompt = f"Jsi odborník. Hledáme odrůdu: {search_name}.\n!!! KRITICKÁ PRAVIDLA:\n1. OVĚŘ A OPRAV NÁZEV: Zjisti přesný oficiální název (např. 'rajče start' -> 'Rajče Start F1').\n2. PIŠ EXTRÉMNĚ STRUČNĚ (max 6 slov na řádek pro řádky 1-5).\n3. PIŠ LAICKY PRO BĚŽNÉHO SPOTŘEBITELE. VYNECH CIZÍ A ODBORNÁ SLOVA. !!!\nVypiš to přesně takto:\nPŘESNÝ NÁZEV: (doplň oficiální název)\n{specifics}\nZAJÍMAVOSTI:\n- (1. zajímavost o pěstování, původu nebo chuti)\n- (2. zajímavost)\n- (3. zajímavost)"
                 st.code(ai_prompt, language="text")
 
             search_q = (curr_name.split(" - ")[0].strip() if " - " in curr_name else curr_name).replace(" ", "+")
@@ -607,7 +606,7 @@ with tab1:
             st.success("🌱 **Režim Sadba:** Bude vytištěn pouze velký název, maximálně zvětšená fotka a cena.")
         else:
             ai_val = st.session_state.d.get("last_ai", "")
-            ai_input = st.text_area("Vložit výsledek z AI:", value=ai_val, height=120, key=c_key("ai"))
+            ai_input = st.text_area("Vložit výsledek z AI (Zůstane uložen s informacemi navíc):", value=ai_val, height=150, key=c_key("ai"))
             
             if ai_input and ai_input != ai_val:
                 sync_to_d() 
@@ -619,6 +618,7 @@ with tab1:
                     line_up = line.upper().strip()
                     
                     if line_up.startswith("PŘESNÝ NÁZEV:"):
+                        # OPRAVA: Znovu povoleno čtení a úprava přesného názvu
                         parts = line.split(":", 1)
                         if len(parts) > 1:
                             possible_name = parts[1].strip()
