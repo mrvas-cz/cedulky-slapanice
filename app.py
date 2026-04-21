@@ -7,6 +7,7 @@ import unicodedata
 import json
 import shutil
 import uuid
+import zipfile
 
 # --- 1. KONFIGURACE A ABSOLUTNÍ CESTA ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -23,11 +24,36 @@ with st.sidebar:
     st.header("⚙️ Systémové informace")
     st.info("📂 **Cesta k vašemu archivu:**\n\n`" + DB_DIR + "`\n\n*(Zde se nacházejí všechny vaše uložené cedulky)*")
 
+# PŘIDÁN ODPUZOVAČ PŘEKLADAČŮ A STYLOVÁNÍ OBŘÍCH ZÁLOŽEK
 st.markdown("""
     <style>
     .stButton>button { border-radius: 8px; font-weight: bold; }
     .stTextArea textarea { background-color: #f8fbfa; border: 1px solid #1B5E20; }
+    
+    /* Vylepšení hlavních záložek (Tabs) - Obří a přehledné */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 10px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        height: 70px;
+        background-color: #f0f2f6;
+        border-radius: 12px 12px 0 0;
+        padding: 0 30px;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #e8f5e9 !important;
+        border-bottom: 5px solid #1B5E20 !important;
+    }
+    .stTabs [data-baseweb="tab"] p {
+        font-size: 26px !important;
+        font-weight: 900 !important;
+        color: #333333;
+    }
+    .stTabs [aria-selected="true"] p {
+        color: #1B5E20 !important;
+    }
     </style>
+    <meta name="google" content="notranslate">
 """, unsafe_allow_html=True)
 
 # --- 2. GRAFICKÉ FUNKCE A VEKTOROVÉ IKONY ---
@@ -446,7 +472,6 @@ def draw_label(name, img_plant, lines_text, shu_text, cat, font_bold, font_reg):
     d.rectangle([0, 0, L_W-1, L_H-1], outline="#EEEEEE", width=3)
     return lbl
 
-# --- NOVÁ FUNKCE PRO RYCHLÉ VYTVOŘENÍ PDF (SDÍLENÁ PRO OBĚ ZÁLOŽKY) ---
 def generate_pdfs(c_name, c_img, lines_text, c_shu, c_cat, font_bold, font_reg):
     valid_lines = [r for r in lines_text if r.strip() and not r.endswith(": | ") and r.strip() != "✿" and r.strip() != "☀" and r.strip() != "💧"]
     if not valid_lines: valid_lines = lines_text
@@ -460,7 +485,7 @@ def generate_pdfs(c_name, c_img, lines_text, c_shu, c_cat, font_bold, font_reg):
     canvas_4.paste(single_lbl, (1240, 1754))
 
     pdf_buf_4 = io.BytesIO()
-    canvas_4.save(pdf_buf_4, format="PDF")
+    canvas_4.save(pdf_buf_4, format="PDF", resolution=300, quality=100)
 
     canvas_2 = Image.new('RGB', (3508, 2480), 'white')
     single_lbl_a5 = single_lbl.resize((1754, 2480), Image.Resampling.LANCZOS)
@@ -468,12 +493,13 @@ def generate_pdfs(c_name, c_img, lines_text, c_shu, c_cat, font_bold, font_reg):
     canvas_2.paste(single_lbl_a5, (1754, 0))
 
     pdf_buf_2 = io.BytesIO()
-    canvas_2.save(pdf_buf_2, format="PDF")
+    canvas_2.save(pdf_buf_2, format="PDF", resolution=300, quality=100)
 
     return canvas_4, pdf_buf_4, pdf_buf_2
 
 # --- 3. BEZPEČNÁ PAMĚŤ ---
 if 'form_key' not in st.session_state: st.session_state.form_key = str(uuid.uuid4())
+if 'active_print_preview' not in st.session_state: st.session_state.active_print_preview = None # NOVÉ PRO EXKLUZIVNÍ TISK
 if 'd' not in st.session_state:
     st.session_state.d = {
         "name": "", "cat": "Ostatní", "img": None,
@@ -720,7 +746,7 @@ with tab1:
                         }
                         with open(os.path.join(p, "data.json"), "w", encoding="utf-8") as f:
                             json.dump(d_out, f, ensure_ascii=False)
-                        f_img.save(os.path.join(p, "photo.jpg"), "JPEG")
+                        f_img.save(os.path.join(p, "photo.jpg"), "JPEG", quality=100, subsampling=0)
                         
                         st.session_state.d["loaded_from"] = new_folder
                         st.success("✅ Cedulka úspěšně aktualizována a původní AI text zálohován!")
@@ -748,7 +774,7 @@ with tab1:
                         }
                         with open(os.path.join(p, "data.json"), "w", encoding="utf-8") as f:
                             json.dump(d_out, f, ensure_ascii=False)
-                        f_img.save(os.path.join(p, "photo.jpg"), "JPEG")
+                        f_img.save(os.path.join(p, "photo.jpg"), "JPEG", quality=100, subsampling=0)
                         
                         st.session_state.d["loaded_from"] = new_folder
                         st.success("✅ Uloženo do skladu jako nová cedulka!")
@@ -788,7 +814,7 @@ with tab1:
                         }
                         with open(os.path.join(p, "data.json"), "w", encoding="utf-8") as f:
                             json.dump(d_out, f, ensure_ascii=False)
-                        f_img.save(os.path.join(p, "photo.jpg"), "JPEG")
+                        f_img.save(os.path.join(p, "photo.jpg"), "JPEG", quality=100, subsampling=0)
                         
                         st.session_state.d["loaded_from"] = new_folder
                         st.success("✅ Uloženo do databáze včetně původního AI textu! (Přepnuto do režimu úprav)")
@@ -862,6 +888,38 @@ with tab2:
                 kat_items.sort(key=lambda x: x[1].get('name', '').lower(), reverse=True)
 
             with st.expander(f"📂 {kat} ({len(kat_items)})", expanded=(bool(search_q))):
+                
+                # --- TLAČÍTKO PRO STAŽENÍ CELÉ KATEGORIE (ZIP) ---
+                if st.button(f"📦 Připravit celou kategorii ke stažení (ZIP)", key=f"zip_prep_{kat}", type="primary"):
+                    with st.spinner(f"Balím {len(kat_items)} položek do ZIPu, vydržte..."):
+                        zip_buffer = io.BytesIO()
+                        f_b, f_r = get_czech_font("Bold"), get_czech_font("Regular")
+                        with zipfile.ZipFile(zip_buffer, "w") as zip_file:
+                            for f_name, info in kat_items:
+                                img_p = os.path.join(DB_DIR, f_name, "photo.jpg")
+                                if os.path.exists(img_p):
+                                    p_name = info.get('name', 'Neznámý')
+                                    p_cat = info.get('cat', 'Ostatní')
+                                    p_shu = info.get('shu', '')
+                                    p_lines = [info.get('r1', ''), info.get('r2', ''), info.get('r3', ''), info.get('r4', '')]
+                                    p_img = Image.open(img_p).convert("RGB")
+                                    
+                                    cv4, pb4, pb2 = generate_pdfs(p_name, p_img, p_lines, p_shu, p_cat, f_b, f_r)
+                                    safe_name = clean_filename(p_name.split("-")[0] if "-" in p_name else p_name)
+                                    
+                                    # Přidáme do ZIPu obě varianty
+                                    zip_file.writestr(f"{safe_name}_4x_A6.pdf", pb4.getvalue())
+                                    zip_file.writestr(f"{safe_name}_2x_A5.pdf", pb2.getvalue())
+                                    
+                        st.session_state[f"zip_ready_{kat}"] = zip_buffer.getvalue()
+                
+                if st.session_state.get(f"zip_ready_{kat}"):
+                    st.success("✅ ZIP je připraven!")
+                    st.download_button(f"📥 STÁHNOUT ZIP ARCHIV ({kat})", data=st.session_state[f"zip_ready_{kat}"], file_name=f"Cedulky_{kat}.zip", mime="application/zip", type="secondary")
+                    
+                st.markdown("---")
+
+                # --- VÝPIS JEDNOTLIVÝCH ROSTLIN ---
                 for f_name, info in kat_items:
                     c1, c2, c3 = st.columns([1, 2, 2.5])
                     img_p = os.path.join(DB_DIR, f_name, "photo.jpg")
@@ -891,17 +949,22 @@ with tab2:
                         st.session_state.show_load_msg = True
                         st.rerun()
 
-                    # Zde je to kouzlo - Rychlý tisk rovnou z Archivu!
+                    # ZDE JE CHYTRÁ EXKLUZIVNÍ TISKÁRNA
                     if btn_col2.button("🖨️ Tisk", key=f"prnt_{f_name}", width="stretch"):
-                        st.session_state[f"show_print_{f_name}"] = not st.session_state.get(f"show_print_{f_name}", False)
+                        if st.session_state.active_print_preview == f_name:
+                            st.session_state.active_print_preview = None # Zavřít, pokud už je otevřená
+                        else:
+                            st.session_state.active_print_preview = f_name # Otevřít tuto a zavřít ostatní
                         st.rerun()
 
                     if btn_col3.button("🗑️ Smazat", key=f"del_{f_name}", width="stretch"):
                         shutil.rmtree(os.path.join(DB_DIR, f_name))
+                        if st.session_state.active_print_preview == f_name:
+                            st.session_state.active_print_preview = None
                         st.rerun()
 
-                    # --- ZOBRAZENÍ TISKÁRNY PRO KONKRÉTNÍ POLOŽKU ---
-                    if st.session_state.get(f"show_print_{f_name}"):
+                    # --- ZOBRAZENÍ TISKÁRNY POUZE PRO AKTIVNÍ POLOŽKU ---
+                    if st.session_state.active_print_preview == f_name:
                         with st.container():
                             st.markdown("---")
                             with st.spinner(f"Generuji PDF pro {disp_name}..."):
