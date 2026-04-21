@@ -578,7 +578,8 @@ tab_sklad, tab_editor = st.tabs(["🗃️ Sklad / Archiv", "🖌️ Editor & Tis
 with tab_sklad:
     c_head, c_search, c_sort = st.columns([2, 2, 1])
     with c_head:
-        st.header(f"📊 Přehled skladu ({len(all_folders)} položek)")
+        # OPRAVA: POUŽIT SPRÁVNÝ NÁZEV SEZNAMU
+        st.header(f"📊 Přehled skladu ({len(all_saved_folders)} položek)")
     with c_search:
         search_q = st.text_input("🔍 Hledat odrůdu:", placeholder="Zadejte část názvu...").lower()
     with c_sort:
@@ -706,7 +707,6 @@ with tab_editor:
     # --- HORNÍ NAVIGAČNÍ PANEL PRO EDITOR ---
     c_nav1, c_nav2, c_nav3 = st.columns([1, 1.5, 1])
     
-    # Zobrazení šipek pouze pokud editujeme uloženou cedulku
     if st.session_state.d.get("loaded_from") and st.session_state.d["loaded_from"] in ordered_folders:
         curr_idx = ordered_folders.index(st.session_state.d["loaded_from"])
         
