@@ -499,7 +499,7 @@ def generate_pdfs(c_name, c_img, lines_text, c_shu, c_cat, font_bold, font_reg):
 
 # --- 3. BEZPEČNÁ PAMĚŤ ---
 if 'form_key' not in st.session_state: st.session_state.form_key = str(uuid.uuid4())
-if 'active_print_preview' not in st.session_state: st.session_state.active_print_preview = None # NOVÉ PRO EXKLUZIVNÍ TISK
+if 'active_print_preview' not in st.session_state: st.session_state.active_print_preview = None 
 if 'd' not in st.session_state:
     st.session_state.d = {
         "name": "", "cat": "Ostatní", "img": None,
@@ -526,8 +526,7 @@ def apply_template(cat):
     current_r1 = st.session_state.d.get("r1", "")
     is_default_or_empty = current_r1 in ["", "Stanoviště: | Zálivka: ", "Vzrůst: Převis 60 cm | Typ: Letnička"]
     
-    if not is_default_or_empty:
-        return 
+    if not is_default_or_empty: return 
 
     if cat == "Bylinky":
         st.session_state.d["r1"] = "Stanoviště: | Zálivka: "
@@ -550,17 +549,208 @@ def apply_template(cat):
         st.session_state.d["r3"] = "Plod: | Hmotnost: "
         st.session_state.d["r4"] = "Použití: | Tip: "
 
+# Vytvoření seznamu všech uložených cedulek pro navigaci šipkami v editoru
+all_saved_folders = [f for f in os.listdir(DB_DIR) if os.path.isdir(os.path.join(DB_DIR, f))]
+nav_items = []
+for f in all_saved_folders:
+    p = os.path.join(DB_DIR, f, "data.json")
+    if os.path.exists(p):
+        with open(p, "r", encoding="utf-8") as file:
+            info = json.load(file)
+            nav_items.append((f, info.get('name', '').lower()))
+nav_items.sort(key=lambda x: x[1]) # Abecední řazení
+ordered_folders = [x[0] for x in nav_items]
+
 # --- 4. APLIKACE A UI ---
 st.title("🌿 Šlapánský Cedulátor 3000")
 st.markdown("#### *generátor cedulek*")
 
 if st.session_state.show_load_msg:
-    st.success("✅ Cedulka úspěšně načtena! Nyní jste v REŽIMU ÚPRAV.")
+    st.success("✅ Cedulka úspěšně načtena do Editoru!")
     st.session_state.show_load_msg = False
 
-tab1, tab2 = st.tabs(["🖌️ Editor & Tisk", "🗃️ Sklad / Archiv"])
+# OPRAVA: Prohození záložek (Sklad je nyní první a hlavní)
+tab_sklad, tab_editor = st.tabs(["🗃️ Sklad / Archiv", "🖌️ Editor & Tisk"])
 
-with tab1:
+# =========================================================
+# ZÁLOŽKA 1: SKLAD / ARCHIV
+# =========================================================
+with tab_sklad:
+    c_head, c_search, c_sort = st.columns([2, 2, 1])
+    with c_head:
+        st.header(f"📊 Přehled skladu ({len(all_folders)} položek)")
+    with c_search:
+        search_q = st.text_input("🔍 Hledat odrůdu:", placeholder="Zadejte část názvu...").lower()
+    with c_sort:
+        sort_by = st.selectbox("Třídit podle:", ["Název (A-Z)", "Název (Z-A)"])
+
+    for kat in KATEGORIE:
+        kat_items = []
+        for f in all_saved_folders:
+            path = os.path.join(DB_DIR, f, "data.json")
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8") as file:
+                    info = json.load(file)
+                    item_name = info.get('name', 'Neznámý').lower()
+                    if info.get("cat", "Ostatní") == kat:
+                        if search_q in item_name:
+                            kat_items.append((f, info))
+
+        if kat_items:
+            if sort_by == "Název (A-Z)":
+                kat_items.sort(key=lambda x: x[1].get('name', '').lower())
+            else:
+                kat_items.sort(key=lambda x: x[1].get('name', '').lower(), reverse=True)
+
+            with st.expander(f"📂 {kat} ({len(kat_items)})", expanded=(bool(search_q))):
+                
+                if st.button(f"📦 Připravit celou kategorii ke stažení (ZIP)", key=f"zip_prep_{kat}", type="primary"):
+                    with st.spinner(f"Balím {len(kat_items)} položek do ZIPu, vydržte..."):
+                        zip_buffer = io.BytesIO()
+                        f_b, f_r = get_czech_font("Bold"), get_czech_font("Regular")
+                        with zipfile.ZipFile(zip_buffer, "w") as zip_file:
+                            for f_name, info in kat_items:
+                                img_p = os.path.join(DB_DIR, f_name, "photo.jpg")
+                                if os.path.exists(img_p):
+                                    p_name = info.get('name', 'Neznámý')
+                                    p_cat = info.get('cat', 'Ostatní')
+                                    p_shu = info.get('shu', '')
+                                    p_lines = [info.get('r1', ''), info.get('r2', ''), info.get('r3', ''), info.get('r4', '')]
+                                    p_img = Image.open(img_p).convert("RGB")
+                                    
+                                    cv4, pb4, pb2 = generate_pdfs(p_name, p_img, p_lines, p_shu, p_cat, f_b, f_r)
+                                    safe_name = clean_filename(p_name.split("-")[0] if "-" in p_name else p_name)
+                                    
+                                    zip_file.writestr(f"{safe_name}_4x_A6.pdf", pb4.getvalue())
+                                    zip_file.writestr(f"{safe_name}_2x_A5.pdf", pb2.getvalue())
+                                    
+                        st.session_state[f"zip_ready_{kat}"] = zip_buffer.getvalue()
+                
+                if st.session_state.get(f"zip_ready_{kat}"):
+                    st.success("✅ ZIP je připraven!")
+                    st.download_button(f"📥 STÁHNOUT ZIP ARCHIV ({kat})", data=st.session_state[f"zip_ready_{kat}"], file_name=f"Cedulky_{kat}.zip", mime="application/zip", type="secondary")
+                    
+                st.markdown("---")
+
+                for f_name, info in kat_items:
+                    c1, c2, c3 = st.columns([1, 2, 2.5])
+                    img_p = os.path.join(DB_DIR, f_name, "photo.jpg")
+                    has_img = os.path.exists(img_p)
+                    if has_img: c1.image(img_p, width=120)
+
+                    disp_name = info.get('name', 'Neznámý')
+                    if " - " in disp_name:
+                        disp_name = disp_name.replace(" - ", " <span style='color:red;'>- ") + "</span>"
+                    c2.markdown(f"**{disp_name}**", unsafe_allow_html=True)
+                    
+                    if info.get('cat') != "Sadba":
+                        c2.caption(f"{info.get('r1', '')} \n{info.get('r2', '')}")
+
+                    btn_col1, btn_col2, btn_col3 = c3.columns(3)
+                    
+                    if btn_col1.button("✏️ Upravit v Editoru", key=f"load_{f_name}", width="stretch"):
+                        loaded_d, loaded_img = load_label_data(f_name)
+                        st.session_state.d.update(loaded_d)
+                        if st.session_state.d.get("cat") not in KATEGORIE: st.session_state.d["cat"] = "Ostatní"
+                        if "shu" not in st.session_state.d: st.session_state.d["shu"] = ""
+                        st.session_state.d["img"] = loaded_img
+                        st.session_state.d["last_ai"] = loaded_d.get("raw_ai", "")
+                        st.session_state.d["loaded_from"] = f_name
+                        st.session_state.form_key = str(uuid.uuid4())
+                        st.session_state.show_load_msg = True
+                        st.rerun()
+
+                    if btn_col2.button("🖨️ Tisk", key=f"prnt_{f_name}", width="stretch"):
+                        if st.session_state.active_print_preview == f_name:
+                            st.session_state.active_print_preview = None
+                        else:
+                            st.session_state.active_print_preview = f_name
+                        st.rerun()
+
+                    if btn_col3.button("🗑️ Smazat", key=f"del_{f_name}", width="stretch"):
+                        shutil.rmtree(os.path.join(DB_DIR, f_name))
+                        if st.session_state.active_print_preview == f_name:
+                            st.session_state.active_print_preview = None
+                        st.rerun()
+
+                    if st.session_state.active_print_preview == f_name:
+                        with st.container():
+                            st.markdown("---")
+                            with st.spinner(f"Generuji PDF pro {disp_name}..."):
+                                p_name = info.get('name', 'Neznámý')
+                                p_cat = info.get('cat', 'Ostatní')
+                                p_shu = info.get('shu', '')
+                                p_lines = [info.get('r1', ''), info.get('r2', ''), info.get('r3', ''), info.get('r4', '')]
+                                p_img = Image.open(img_p).convert("RGB") if has_img else None
+                                
+                                if p_img and p_name:
+                                    f_b, f_r = get_czech_font("Bold"), get_czech_font("Regular")
+                                    cv4, pb4, pb2 = generate_pdfs(p_name, p_img, p_lines, p_shu, p_cat, f_b, f_r)
+                                    
+                                    c_prev, c_dwn = st.columns([1, 1])
+                                    c_prev.image(cv4, width="stretch")
+                                    
+                                    dwn_name = clean_filename(p_name.split("-")[0] if "-" in p_name else p_name)
+                                    c_dwn.download_button("📥 STÁHNOUT 4 CEDULKY (A6)", pb4.getvalue(), f"{dwn_name}_4x_A6.pdf", mime="application/pdf", type="primary", key=f"d4_{f_name}", width="stretch")
+                                    c_dwn.markdown("<br>", unsafe_allow_html=True)
+                                    c_dwn.download_button("📥 STÁHNOUT 2 CEDULKY (A5)", pb2.getvalue(), f"{dwn_name}_2x_A5.pdf", mime="application/pdf", type="secondary", key=f"d2_{f_name}", width="stretch")
+                                else:
+                                    st.error("Chybí obrázek nebo název, nelze generovat tisk.")
+                            st.markdown("---")
+
+# =========================================================
+# ZÁLOŽKA 2: EDITOR & TISK
+# =========================================================
+with tab_editor:
+    
+    # --- HORNÍ NAVIGAČNÍ PANEL PRO EDITOR ---
+    c_nav1, c_nav2, c_nav3 = st.columns([1, 1.5, 1])
+    
+    # Zobrazení šipek pouze pokud editujeme uloženou cedulku
+    if st.session_state.d.get("loaded_from") and st.session_state.d["loaded_from"] in ordered_folders:
+        curr_idx = ordered_folders.index(st.session_state.d["loaded_from"])
+        
+        with c_nav1:
+            if curr_idx > 0:
+                if st.button("⬅️ Předchozí v archivu", width="stretch"):
+                    prev_f = ordered_folders[curr_idx - 1]
+                    loaded_d, loaded_img = load_label_data(prev_f)
+                    st.session_state.d.update(loaded_d)
+                    if "shu" not in st.session_state.d: st.session_state.d["shu"] = ""
+                    st.session_state.d["img"] = loaded_img
+                    st.session_state.d["last_ai"] = loaded_d.get("raw_ai", "")
+                    st.session_state.d["loaded_from"] = prev_f
+                    st.session_state.form_key = str(uuid.uuid4())
+                    st.rerun()
+        
+        with c_nav3:
+            if curr_idx < len(ordered_folders) - 1:
+                if st.button("Další v archivu ➡️", width="stretch"):
+                    next_f = ordered_folders[curr_idx + 1]
+                    loaded_d, loaded_img = load_label_data(next_f)
+                    st.session_state.d.update(loaded_d)
+                    if "shu" not in st.session_state.d: st.session_state.d["shu"] = ""
+                    st.session_state.d["img"] = loaded_img
+                    st.session_state.d["last_ai"] = loaded_d.get("raw_ai", "")
+                    st.session_state.d["loaded_from"] = next_f
+                    st.session_state.form_key = str(uuid.uuid4())
+                    st.rerun()
+                    
+    with c_nav2:
+        if st.button("➕ Založit novou čistou cedulku", width="stretch", type="primary"):
+            st.session_state.d = {
+                "name": "", "cat": "Ostatní", "img": None,
+                "r1": "Stanoviště: | Zálivka: ", "r2": "Spon: | Výška: ",
+                "r3": "Plod: | Hmotnost: ", "r4": "Použití: | Tip: ", 
+                "shu": "", "last_ai": "", "last_name_check": "",
+                "loaded_from": None
+            }
+            st.session_state.form_key = str(uuid.uuid4())
+            st.rerun()
+            
+    st.markdown("---")
+
+    # --- SAMOTNÝ EDITOR ---
     col_search, col_data = st.columns([1, 1.2], gap="large")
 
     with col_search:
@@ -597,18 +787,7 @@ with tab1:
         
         folder_check = clean_filename(curr_name.split("-")[0].strip() if "-" in curr_name else curr_name)
         if curr_name and os.path.exists(os.path.join(DB_DIR, folder_check)) and st.session_state.d.get("loaded_from") != folder_check:
-            st.warning("⚠️ Odrůda již v archivu existuje!")
-            if st.button("📂 Načíst existující data z archivu", type="primary", width="stretch"):
-                loaded_d, loaded_img = load_label_data(folder_check)
-                st.session_state.d.update(loaded_d)
-                if st.session_state.d.get("cat") not in KATEGORIE: st.session_state.d["cat"] = "Ostatní"
-                if "shu" not in st.session_state.d: st.session_state.d["shu"] = "" 
-                st.session_state.d["img"] = loaded_img
-                st.session_state.d["last_ai"] = loaded_d.get("raw_ai", "")
-                st.session_state.d["loaded_from"] = folder_check
-                st.session_state.form_key = str(uuid.uuid4())
-                st.session_state.show_load_msg = True
-                st.rerun()
+            st.warning("⚠️ Odrůda s tímto názvem už ve skladu existuje!")
 
         cat_idx = KATEGORIE.index(st.session_state.d["cat"]) if st.session_state.d["cat"] in KATEGORIE else KATEGORIE.index("Ostatní")
         selected_cat = st.selectbox("Kategorie pro uložení:", KATEGORIE, index=cat_idx, key=c_key("cat"))
@@ -718,9 +897,9 @@ with tab1:
         
         if is_editing:
             st.info("✏️ **REŽIM ÚPRAV:** Pracujete s cedulkou načtenou ze skladu.")
-            c_btn1, c_btn2, c_btn3 = st.columns(3)
+            c_btn1, c_btn2 = st.columns(2)
             with c_btn1:
-                if st.button("💾 PŘEPSAT PŮVODNÍ", type="primary", width="stretch"):
+                if st.button("💾 PŘEPSAT PŮVODNÍ VE SKLADU", type="primary", width="stretch"):
                     sync_to_d() 
                     f_name = st.session_state.d["name"]
                     f_img = st.session_state.d.get("img")
@@ -749,12 +928,12 @@ with tab1:
                         f_img.save(os.path.join(p, "photo.jpg"), "JPEG", quality=100, subsampling=0)
                         
                         st.session_state.d["loaded_from"] = new_folder
-                        st.success("✅ Cedulka úspěšně aktualizována a původní AI text zálohován!")
+                        st.success("✅ Úspěšně přepsáno!")
                     else:
                         st.error("❌ Chybí název nebo fotka!")
 
             with c_btn2:
-                if st.button("💾 ULOŽIT JAKO KOPII", width="stretch"):
+                if st.button("💾 ULOŽIT JAKO NOVOU KOPII", width="stretch"):
                     sync_to_d() 
                     f_name = st.session_state.d["name"]
                     f_img = st.session_state.d.get("img")
@@ -781,59 +960,33 @@ with tab1:
                     else:
                         st.error("❌ Chybí název nebo fotka!")
 
-            with c_btn3:
-                if st.button("🔄 ZAVŘÍT ÚPRAVY", width="stretch"):
-                    st.session_state.d = {
-                        "name": "", "cat": "Ostatní", "img": None,
-                        "r1": "Stanoviště: | Zálivka: ", "r2": "Spon: | Výška: ",
-                        "r3": "Plod: | Hmotnost: ", "r4": "Použití: | Tip: ", 
-                        "shu": "", "last_ai": "", "last_name_check": "",
-                        "loaded_from": None
-                    }
-                    st.session_state.form_key = str(uuid.uuid4())
-                    st.rerun()
-
         else:
-            col_btn1, col_btn2 = st.columns(2)
-            with col_btn1:
-                if st.button("💾 ULOŽIT DO SKLADU", type="primary", width="stretch"):
-                    sync_to_d() 
-                    f_name = st.session_state.d["name"]
-                    f_img = st.session_state.d.get("img")
-                    if f_name and f_img:
-                        save_name = f_name.split(" - ")[0].strip() if " - " in f_name else f_name
-                        new_folder = clean_filename(save_name)
-                        p = os.path.join(DB_DIR, new_folder)
-                        if not os.path.exists(p): os.makedirs(p)
-                        d_out = {
-                            "name": f_name, "cat": st.session_state.d["cat"],
-                            "r1": st.session_state.d["r1"], "r2": st.session_state.d["r2"],
-                            "r3": st.session_state.d["r3"], "r4": st.session_state.d["r4"],
-                            "shu": st.session_state.d["shu"],
-                            "raw_ai": st.session_state.d.get("last_ai", "")
-                        }
-                        with open(os.path.join(p, "data.json"), "w", encoding="utf-8") as f:
-                            json.dump(d_out, f, ensure_ascii=False)
-                        f_img.save(os.path.join(p, "photo.jpg"), "JPEG", quality=100, subsampling=0)
-                        
-                        st.session_state.d["loaded_from"] = new_folder
-                        st.success("✅ Uloženo do databáze včetně původního AI textu! (Přepnuto do režimu úprav)")
-                    else:
-                        st.error("❌ Chybí název nebo fotka!")
-
-            with col_btn2:
-                if st.button("🔄 NOVÁ (VYČISTIT)", width="stretch"):
-                    st.session_state.d = {
-                        "name": "", "cat": "Ostatní", "img": None,
-                        "r1": "Stanoviště: | Zálivka: ", "r2": "Spon: | Výška: ",
-                        "r3": "Plod: | Hmotnost: ", "r4": "Použití: | Tip: ", 
-                        "shu": "", "last_ai": "", "last_name_check": "",
-                        "loaded_from": None
+            if st.button("💾 ULOŽIT NOVOU DO SKLADU", type="primary", width="stretch"):
+                sync_to_d() 
+                f_name = st.session_state.d["name"]
+                f_img = st.session_state.d.get("img")
+                if f_name and f_img:
+                    save_name = f_name.split(" - ")[0].strip() if " - " in f_name else f_name
+                    new_folder = clean_filename(save_name)
+                    p = os.path.join(DB_DIR, new_folder)
+                    if not os.path.exists(p): os.makedirs(p)
+                    d_out = {
+                        "name": f_name, "cat": st.session_state.d["cat"],
+                        "r1": st.session_state.d["r1"], "r2": st.session_state.d["r2"],
+                        "r3": st.session_state.d["r3"], "r4": st.session_state.d["r4"],
+                        "shu": st.session_state.d["shu"],
+                        "raw_ai": st.session_state.d.get("last_ai", "")
                     }
-                    st.session_state.form_key = str(uuid.uuid4())
-                    st.rerun()
+                    with open(os.path.join(p, "data.json"), "w", encoding="utf-8") as f:
+                        json.dump(d_out, f, ensure_ascii=False)
+                    f_img.save(os.path.join(p, "photo.jpg"), "JPEG", quality=100, subsampling=0)
+                    
+                    st.session_state.d["loaded_from"] = new_folder
+                    st.success("✅ Uloženo do databáze! Nyní jste v režimu úprav.")
+                else:
+                    st.error("❌ Chybí název nebo fotka!")
 
-    # --- NÁHLED A TISK ---
+    # --- NÁHLED A TISK (EDITOR) ---
     c_name = get_current("name")
     c_img = st.session_state.d.get("img")
     c_shu = get_current("shu") if st.session_state.d["cat"] == "Papriky - Pálivé" else ""
@@ -841,7 +994,7 @@ with tab1:
     
     if c_name and c_img:
         st.markdown("---")
-        st.subheader("🖨️ Náhled a Tisk (Zvolte formát)")
+        st.subheader("🖨️ Náhled a Tisk (z Editoru)")
         with st.spinner("Generuji archy..."):
             f_b, f_r = get_czech_font("Bold"), get_czech_font("Regular")
             lines = [get_current("r1"), get_current("r2"), get_current("r3"), get_current("r4")]
@@ -853,138 +1006,6 @@ with tab1:
             
             with c_dl_col:
                 down_name = clean_filename(c_name.split("-")[0] if "-" in c_name else c_name)
-                st.download_button("📥 STÁHNOUT PDF: 4 CEDULKY (Klasika A6)", pdf_buf_4.getvalue(), f"{down_name}_4x_A6.pdf", mime="application/pdf", type="primary", width="stretch")
+                st.download_button("📥 STÁHNOUT PDF: 4 CEDULKY (A6)", pdf_buf_4.getvalue(), f"{down_name}_4x_A6.pdf", mime="application/pdf", type="primary", width="stretch")
                 st.markdown("<br>", unsafe_allow_html=True)
-                st.download_button("📥 STÁHNOUT PDF: 2 CEDULKY (Velké A5)", pdf_buf_2.getvalue(), f"{down_name}_2x_A5.pdf", mime="application/pdf", type="secondary", width="stretch")
-
-# --- ZÁLOŽKA 2: NOVÝ CHYTRÝ ARCHIV S FILTRY A TISKEM ---
-with tab2:
-    all_folders = [f for f in os.listdir(DB_DIR) if os.path.isdir(os.path.join(DB_DIR, f))]
-    
-    c_head, c_search, c_sort = st.columns([2, 2, 1])
-    with c_head:
-        st.header(f"📊 Přehled skladu ({len(all_folders)} položek)")
-    with c_search:
-        search_q = st.text_input("🔍 Hledat odrůdu:", placeholder="Zadejte část názvu...").lower()
-    with c_sort:
-        sort_by = st.selectbox("Třídit podle:", ["Název (A-Z)", "Název (Z-A)"])
-
-    for kat in KATEGORIE:
-        kat_items = []
-        for f in all_folders:
-            path = os.path.join(DB_DIR, f, "data.json")
-            if os.path.exists(path):
-                with open(path, "r", encoding="utf-8") as file:
-                    info = json.load(file)
-                    item_name = info.get('name', 'Neznámý').lower()
-                    if info.get("cat", "Ostatní") == kat:
-                        if search_q in item_name:
-                            kat_items.append((f, info))
-
-        if kat_items:
-            if sort_by == "Název (A-Z)":
-                kat_items.sort(key=lambda x: x[1].get('name', '').lower())
-            else:
-                kat_items.sort(key=lambda x: x[1].get('name', '').lower(), reverse=True)
-
-            with st.expander(f"📂 {kat} ({len(kat_items)})", expanded=(bool(search_q))):
-                
-                # --- TLAČÍTKO PRO STAŽENÍ CELÉ KATEGORIE (ZIP) ---
-                if st.button(f"📦 Připravit celou kategorii ke stažení (ZIP)", key=f"zip_prep_{kat}", type="primary"):
-                    with st.spinner(f"Balím {len(kat_items)} položek do ZIPu, vydržte..."):
-                        zip_buffer = io.BytesIO()
-                        f_b, f_r = get_czech_font("Bold"), get_czech_font("Regular")
-                        with zipfile.ZipFile(zip_buffer, "w") as zip_file:
-                            for f_name, info in kat_items:
-                                img_p = os.path.join(DB_DIR, f_name, "photo.jpg")
-                                if os.path.exists(img_p):
-                                    p_name = info.get('name', 'Neznámý')
-                                    p_cat = info.get('cat', 'Ostatní')
-                                    p_shu = info.get('shu', '')
-                                    p_lines = [info.get('r1', ''), info.get('r2', ''), info.get('r3', ''), info.get('r4', '')]
-                                    p_img = Image.open(img_p).convert("RGB")
-                                    
-                                    cv4, pb4, pb2 = generate_pdfs(p_name, p_img, p_lines, p_shu, p_cat, f_b, f_r)
-                                    safe_name = clean_filename(p_name.split("-")[0] if "-" in p_name else p_name)
-                                    
-                                    # Přidáme do ZIPu obě varianty
-                                    zip_file.writestr(f"{safe_name}_4x_A6.pdf", pb4.getvalue())
-                                    zip_file.writestr(f"{safe_name}_2x_A5.pdf", pb2.getvalue())
-                                    
-                        st.session_state[f"zip_ready_{kat}"] = zip_buffer.getvalue()
-                
-                if st.session_state.get(f"zip_ready_{kat}"):
-                    st.success("✅ ZIP je připraven!")
-                    st.download_button(f"📥 STÁHNOUT ZIP ARCHIV ({kat})", data=st.session_state[f"zip_ready_{kat}"], file_name=f"Cedulky_{kat}.zip", mime="application/zip", type="secondary")
-                    
-                st.markdown("---")
-
-                # --- VÝPIS JEDNOTLIVÝCH ROSTLIN ---
-                for f_name, info in kat_items:
-                    c1, c2, c3 = st.columns([1, 2, 2.5])
-                    img_p = os.path.join(DB_DIR, f_name, "photo.jpg")
-                    has_img = os.path.exists(img_p)
-                    if has_img: c1.image(img_p, width=120)
-
-                    disp_name = info.get('name', 'Neznámý')
-                    if " - " in disp_name:
-                        disp_name = disp_name.replace(" - ", " <span style='color:red;'>- ") + "</span>"
-                    c2.markdown(f"**{disp_name}**", unsafe_allow_html=True)
-                    
-                    if info.get('cat') != "Sadba":
-                        c2.caption(f"{info.get('r1', '')} \n{info.get('r2', '')}")
-
-                    # --- TLAČÍTKA V ARCHIVU ---
-                    btn_col1, btn_col2, btn_col3 = c3.columns(3)
-                    
-                    if btn_col1.button("✏️ Upravit", key=f"load_{f_name}", width="stretch"):
-                        loaded_d, loaded_img = load_label_data(f_name)
-                        st.session_state.d.update(loaded_d)
-                        if st.session_state.d.get("cat") not in KATEGORIE: st.session_state.d["cat"] = "Ostatní"
-                        if "shu" not in st.session_state.d: st.session_state.d["shu"] = ""
-                        st.session_state.d["img"] = loaded_img
-                        st.session_state.d["last_ai"] = loaded_d.get("raw_ai", "")
-                        st.session_state.d["loaded_from"] = f_name
-                        st.session_state.form_key = str(uuid.uuid4())
-                        st.session_state.show_load_msg = True
-                        st.rerun()
-
-                    # ZDE JE CHYTRÁ EXKLUZIVNÍ TISKÁRNA
-                    if btn_col2.button("🖨️ Tisk", key=f"prnt_{f_name}", width="stretch"):
-                        if st.session_state.active_print_preview == f_name:
-                            st.session_state.active_print_preview = None # Zavřít, pokud už je otevřená
-                        else:
-                            st.session_state.active_print_preview = f_name # Otevřít tuto a zavřít ostatní
-                        st.rerun()
-
-                    if btn_col3.button("🗑️ Smazat", key=f"del_{f_name}", width="stretch"):
-                        shutil.rmtree(os.path.join(DB_DIR, f_name))
-                        if st.session_state.active_print_preview == f_name:
-                            st.session_state.active_print_preview = None
-                        st.rerun()
-
-                    # --- ZOBRAZENÍ TISKÁRNY POUZE PRO AKTIVNÍ POLOŽKU ---
-                    if st.session_state.active_print_preview == f_name:
-                        with st.container():
-                            st.markdown("---")
-                            with st.spinner(f"Generuji PDF pro {disp_name}..."):
-                                p_name = info.get('name', 'Neznámý')
-                                p_cat = info.get('cat', 'Ostatní')
-                                p_shu = info.get('shu', '')
-                                p_lines = [info.get('r1', ''), info.get('r2', ''), info.get('r3', ''), info.get('r4', '')]
-                                p_img = Image.open(img_p).convert("RGB") if has_img else None
-                                
-                                if p_img and p_name:
-                                    f_b, f_r = get_czech_font("Bold"), get_czech_font("Regular")
-                                    cv4, pb4, pb2 = generate_pdfs(p_name, p_img, p_lines, p_shu, p_cat, f_b, f_r)
-                                    
-                                    c_prev, c_dwn = st.columns([1, 1])
-                                    c_prev.image(cv4, width="stretch")
-                                    
-                                    dwn_name = clean_filename(p_name.split("-")[0] if "-" in p_name else p_name)
-                                    c_dwn.download_button("📥 STÁHNOUT 4 CEDULKY (A6)", pb4.getvalue(), f"{dwn_name}_4x_A6.pdf", mime="application/pdf", type="primary", key=f"d4_{f_name}", width="stretch")
-                                    c_dwn.markdown("<br>", unsafe_allow_html=True)
-                                    c_dwn.download_button("📥 STÁHNOUT 2 CEDULKY (A5)", pb2.getvalue(), f"{dwn_name}_2x_A5.pdf", mime="application/pdf", type="secondary", key=f"d2_{f_name}", width="stretch")
-                                else:
-                                    st.error("Chybí obrázek nebo název, nelze generovat tisk.")
-                            st.markdown("---")
+                st.download_button("📥 STÁHNOUT PDF: 2 CEDULKY (A5)", pdf_buf_2.getvalue(), f"{down_name}_2x_A5.pdf", mime="application/pdf", type="secondary", width="stretch")
