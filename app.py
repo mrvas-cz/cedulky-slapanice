@@ -549,19 +549,32 @@ def apply_template(cat):
         st.session_state.d["r3"] = "Plod: | Hmotnost: "
         st.session_state.d["r4"] = "Použití: | Tip: "
 
-# Vytvoření seznamu všech uložených cedulek pro navigaci šipkami v editoru
+# --- PŘÍPRAVA KATEGORIZOVANÉHO SEZNAMU PRO ŠIPKY ---
 all_saved_folders = [f for f in os.listdir(DB_DIR) if os.path.isdir(os.path.join(DB_DIR, f))]
-nav_items = []
+cat_nav_dict = {k: [] for k in KATEGORIE + ["Ostatní"]}
+
 for f in all_saved_folders:
     p = os.path.join(DB_DIR, f, "data.json")
     if os.path.exists(p):
         with open(p, "r", encoding="utf-8") as file:
             info = json.load(file)
-            nav_items.append((f, info.get('name', '').lower()))
-nav_items.sort(key=lambda x: x[1]) # Abecední řazení
-ordered_folders = [x[0] for x in nav_items]
+            c = info.get('cat', 'Ostatní')
+            if c not in cat_nav_dict: cat_nav_dict[c] = []
+            cat_nav_dict[c].append((f, info.get('name', '').lower()))
+
+for c in cat_nav_dict:
+    cat_nav_dict[c].sort(key=lambda x: x[1]) # Abecední řazení uvnitř kategorie
+    cat_nav_dict[c] = [x[0] for x in cat_nav_dict[c]] # Nechat jen názvy složek
 
 # --- 4. APLIKACE A UI ---
+
+# VLOŽENÍ LOGA NAD NADPIS
+try:
+    top_logo = Image.open("logo txt farma.JPG")
+    st.image(top_logo, width=250)
+except Exception:
+    pass # Pokud logo chybí, nic se neděje, aplikace nespadne
+
 st.title("🌿 Šlapánský Cedulátor 3000")
 st.markdown("#### *generátor cedulek*")
 
@@ -569,7 +582,6 @@ if st.session_state.show_load_msg:
     st.success("✅ Cedulka úspěšně načtena do Editoru!")
     st.session_state.show_load_msg = False
 
-# OPRAVA: Prohození záložek (Sklad je nyní první a hlavní)
 tab_sklad, tab_editor = st.tabs(["🗃️ Sklad / Archiv", "🖌️ Editor & Tisk"])
 
 # =========================================================
@@ -578,7 +590,6 @@ tab_sklad, tab_editor = st.tabs(["🗃️ Sklad / Archiv", "🖌️ Editor & Tis
 with tab_sklad:
     c_head, c_search, c_sort = st.columns([2, 2, 1])
     with c_head:
-        # OPRAVA: POUŽIT SPRÁVNÝ NÁZEV SEZNAMU
         st.header(f"📊 Přehled skladu ({len(all_saved_folders)} položek)")
     with c_search:
         search_q = st.text_input("🔍 Hledat odrůdu:", placeholder="Zadejte část názvu...").lower()
@@ -704,16 +715,20 @@ with tab_sklad:
 # =========================================================
 with tab_editor:
     
-    # --- HORNÍ NAVIGAČNÍ PANEL PRO EDITOR ---
+    # --- HORNÍ NAVIGAČNÍ PANEL PRO EDITOR (NOVÝ MOZEK PODLE KATEGORIÍ) ---
     c_nav1, c_nav2, c_nav3 = st.columns([1, 1.5, 1])
     
-    if st.session_state.d.get("loaded_from") and st.session_state.d["loaded_from"] in ordered_folders:
-        curr_idx = ordered_folders.index(st.session_state.d["loaded_from"])
+    loaded_f = st.session_state.d.get("loaded_from")
+    curr_cat = st.session_state.d.get("cat")
+    
+    if loaded_f and curr_cat in cat_nav_dict and loaded_f in cat_nav_dict[curr_cat]:
+        cat_ordered = cat_nav_dict[curr_cat]
+        curr_idx = cat_ordered.index(loaded_f)
         
         with c_nav1:
             if curr_idx > 0:
-                if st.button("⬅️ Předchozí v archivu", width="stretch"):
-                    prev_f = ordered_folders[curr_idx - 1]
+                if st.button("⬅️ Předchozí odrůda", width="stretch"):
+                    prev_f = cat_ordered[curr_idx - 1]
                     loaded_d, loaded_img = load_label_data(prev_f)
                     st.session_state.d.update(loaded_d)
                     if "shu" not in st.session_state.d: st.session_state.d["shu"] = ""
@@ -724,9 +739,9 @@ with tab_editor:
                     st.rerun()
         
         with c_nav3:
-            if curr_idx < len(ordered_folders) - 1:
-                if st.button("Další v archivu ➡️", width="stretch"):
-                    next_f = ordered_folders[curr_idx + 1]
+            if curr_idx < len(cat_ordered) - 1:
+                if st.button("Další odrůda ➡️", width="stretch"):
+                    next_f = cat_ordered[curr_idx + 1]
                     loaded_d, loaded_img = load_label_data(next_f)
                     st.session_state.d.update(loaded_d)
                     if "shu" not in st.session_state.d: st.session_state.d["shu"] = ""
